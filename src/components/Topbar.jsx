@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, LogOut, Download } from 'lucide-react';
+import { Menu, LogOut, Download, RefreshCw } from 'lucide-react';
 import { formatINR, formatINRCompact } from '../utils/calculations';
 
 export default function Topbar({
@@ -9,6 +9,9 @@ export default function Topbar({
   currentUser,
   onLogout,
   onOpenInstallApp,
+  syncStatus,
+  lastSyncTime,
+  onSyncNow,
 }) {
   const tabTitles = {
     trades: { title: 'Trading Journal', desc: 'Main Trading Records & Daily Activity' },
@@ -57,8 +60,26 @@ export default function Topbar({
           </div>
         </div>
 
-        {/* Right: Install App + Real-time Net P&L ticker + User Logout */}
+        {/* Right: Sync Status + Install App + Real-time Net P&L ticker + User Logout */}
         <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          {/* Real-time Phone <-> Laptop Wi-Fi Sync */}
+          <button
+            onClick={onSyncNow}
+            className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition active:scale-95 ${
+              syncStatus === 'syncing'
+                ? 'bg-neutral-900 border-emerald-500/50 text-emerald-300'
+                : syncStatus === 'offline'
+                ? 'bg-neutral-900/90 border-neutral-800 text-neutral-400 hover:text-white'
+                : 'bg-neutral-900/90 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700'
+            }`}
+            title={lastSyncTime ? `Phone & Laptop Synced at ${lastSyncTime}. Click to Sync Now.` : 'Click to Sync Phone & Laptop'}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin text-emerald-400' : 'text-emerald-400'}`} />
+            <span className="hidden sm:inline font-bold">
+              {syncStatus === 'syncing' ? 'Syncing...' : 'Synced'}
+            </span>
+          </button>
+
           {/* Install App Quick Action (for both Phone & Laptop) */}
           <button
             onClick={onOpenInstallApp}

@@ -22,6 +22,9 @@ export default function Sidebar({
   currentUser,
   onLogout,
   onOpenInstallApp,
+  syncStatus,
+  lastSyncTime,
+  onSyncNow,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [marketStatus, setMarketStatus] = useState({ isOpen: false, text: 'CLOSED' });
@@ -264,6 +267,24 @@ export default function Sidebar({
             <div className="flex items-center justify-between text-[11px] sm:text-xs text-neutral-400 pt-1.5 border-t border-neutral-800/80">
               <span>Win Rate: <strong className="text-white">{analytics.winRate}%</strong></span>
               <span>Profit Factor: <strong className="text-white">{analytics.profitFactor}</strong></span>
+            </div>
+
+            {/* Real-time Cross-Device Sync Indicator */}
+            <div className="flex items-center justify-between text-[11px] text-neutral-400 px-2 py-1 bg-black/50 rounded-xl border border-neutral-800">
+              <div className="flex items-center space-x-1.5">
+                <span className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'offline' ? 'bg-neutral-500' : 'bg-emerald-400 shadow-[0_0_6px_#00e676]'}`} />
+                <span className="font-semibold text-neutral-300">
+                  {syncStatus === 'syncing' ? 'Syncing...' : 'Phone & PC Linked'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onSyncNow}
+                className="text-[10px] text-emerald-400 hover:text-white font-bold"
+                title="Trigger Manual Sync"
+              >
+                Sync Now
+              </button>
             </div>
 
             {/* Install App on Phone & Laptop Button */}

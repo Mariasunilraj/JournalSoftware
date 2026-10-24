@@ -12,6 +12,11 @@ import PrintReport from './components/PrintReport';
 import BottomNav from './components/BottomNav';
 import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
+import {
+  pushDataToSyncServer,
+  pullDataFromSyncServer,
+  mergeDatasets,
+} from './utils/syncManager';
 
 import {
   loadUserData,
@@ -95,6 +100,67 @@ export default function App() {
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'offline'
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+
+  // Cross-Device Sync Engine (Phone <-> Laptop Master Sync)
+  const triggerSync = useCallback(async () => {
+    if (!currentUser) return;
+    setSyncStatus('syncing');
+    try {
+      const serverData = await pullDataFromSyncServer(currentUser.id);
+      const localData = loadUserData(currentUser.id);
+
+      // If server is empty and local device has data, seed the server
+      if (
+        (!serverData || (!serverData.trades?.length && !serverData.diary?.length && !serverData.capitalLogs?.length)) &&
+        (localData.trades.length || localData.diary.length || localData.capitalLogs.length)
+      ) {
+        await pushDataToSyncServer(currentUser.id, localData);
+        setSyncStatus('synced');
+        setLastSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        return;
+      }
+
+      if (serverData && (serverData.trades || serverData.diary || serverData.capitalLogs || serverData.settings)) {
+        const merged = mergeDatasets(localData, serverData);
+        setTrades(merged.trades);
+        setDiary(merged.diary);
+        setCapitalLogs(merged.capitalLogs);
+        if (merged.settings) {
+          setSettings({ ...merged.settings, initialCapital: Number(merged.settings.initialCapital) || 0 });
+        }
+
+        saveUserTrades(currentUser.id, merged.trades);
+        saveUserDiary(currentUser.id, merged.diary);
+        saveUserCapitalLogs(currentUser.id, merged.capitalLogs);
+        if (merged.settings) saveUserSettings(currentUser.id, merged.settings);
+
+        // Update server with merged set
+        await pushDataToSyncServer(currentUser.id, merged);
+        setSyncStatus('synced');
+        setLastSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      } else {
+        setSyncStatus('synced');
+      }
+    } catch (err) {
+      setSyncStatus('offline');
+    }
+  }, [currentUser]);
+
+  // Periodic Auto-Sync & Tab Focus Wakeup (every 10s)
+  useEffect(() => {
+    if (!currentUser) return;
+    triggerSync();
+    const interval = setInterval(triggerSync, 10000);
+    const onFocus = () => triggerSync();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [currentUser, triggerSync]);
+
   // Handle successful login or registration
   const handleLoginSuccess = useCallback((user) => {
     setCurrentUser(user);
@@ -104,6 +170,17 @@ export default function App() {
     setCapitalLogs(data.capitalLogs);
     setSettings(data.settings);
     setActiveTab('trades');
+    setTimeout(() => {
+      pullDataFromSyncServer(user.id).then((serverData) => {
+        if (serverData && (serverData.trades?.length || serverData.diary?.length)) {
+          const merged = mergeDatasets(data, serverData);
+          setTrades(merged.trades);
+          setDiary(merged.diary);
+          setCapitalLogs(merged.capitalLogs);
+          if (merged.settings) setSettings(merged.settings);
+        }
+      });
+    }, 200);
   }, []);
 
   // Handle user logout
@@ -120,7 +197,7 @@ export default function App() {
     return calculateAnalytics(trades, Number(settings?.initialCapital) || 0);
   }, [trades, settings?.initialCapital]);
 
-  // Persist trades with Row-Level Security (RLS)
+  // Persist trades with Row-Level Security (RLS) & Real-time Auto-Sync
   const handleSaveTrade = useCallback((tradeData) => {
     if (!currentUser) return;
     setTrades((prev) => {
@@ -134,18 +211,31 @@ export default function App() {
         updated = [stampedTrade, ...prev];
       }
       saveUserTrades(currentUser.id, updated);
+      // Auto push to sync master
+      pushDataToSyncServer(currentUser.id, {
+        trades: updated,
+        diary,
+        capitalLogs,
+        settings,
+      });
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, diary, capitalLogs, settings]);
 
   const handleDeleteTrade = useCallback((tradeId) => {
     if (!currentUser) return;
     setTrades((prev) => {
       const updated = prev.filter((t) => t.id !== tradeId);
       saveUserTrades(currentUser.id, updated);
+      pushDataToSyncServer(currentUser.id, {
+        trades: updated,
+        diary,
+        capitalLogs,
+        settings,
+      });
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, diary, capitalLogs, settings]);
 
   const handleDuplicateTrade = useCallback((tradeData) => {
     const duplicated = {
@@ -157,7 +247,7 @@ export default function App() {
     handleSaveTrade(duplicated);
   }, [handleSaveTrade]);
 
-  // Persist diary with RLS
+  // Persist diary with RLS & Auto-Sync
   const handleSaveDiary = useCallback((entry) => {
     if (!currentUser) return;
     setDiary((prev) => {
@@ -171,31 +261,49 @@ export default function App() {
         updated = [stampedEntry, ...prev];
       }
       saveUserDiary(currentUser.id, updated);
+      pushDataToSyncServer(currentUser.id, {
+        trades,
+        diary: updated,
+        capitalLogs,
+        settings,
+      });
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, trades, capitalLogs, settings]);
 
   const handleDeleteDiary = useCallback((idOrDate) => {
     if (!currentUser) return;
     setDiary((prev) => {
       const updated = prev.filter((d) => d.id !== idOrDate && d.date !== idOrDate);
       saveUserDiary(currentUser.id, updated);
+      pushDataToSyncServer(currentUser.id, {
+        trades,
+        diary: updated,
+        capitalLogs,
+        settings,
+      });
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, trades, capitalLogs, settings]);
 
-  // Persist capital with RLS
+  // Persist capital with RLS & Auto-Sync
   const handleAddCapitalLog = useCallback((log) => {
     if (!currentUser) return;
     setCapitalLogs((prev) => {
       const stampedLog = { ...log, userId: currentUser.id };
       const updated = [stampedLog, ...prev];
       saveUserCapitalLogs(currentUser.id, updated);
+      pushDataToSyncServer(currentUser.id, {
+        trades,
+        diary,
+        capitalLogs: updated,
+        settings,
+      });
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, trades, diary, settings]);
 
-  // Bulk restore or sample load with RLS
+  // Bulk restore or sample load with RLS & Auto-Sync
   const handleUpdateAllData = useCallback(({ trades: newTrades, diary: newDiary, capitalLogs: newCap, settings: newSet }) => {
     if (!currentUser) return;
     if (newTrades) {
@@ -214,7 +322,13 @@ export default function App() {
       setSettings(newSet);
       saveUserSettings(currentUser.id, newSet);
     }
-  }, [currentUser]);
+    pushDataToSyncServer(currentUser.id, {
+      trades: newTrades || trades,
+      diary: newDiary || diary,
+      capitalLogs: newCap || capitalLogs,
+      settings: newSet || settings,
+    });
+  }, [currentUser, trades, diary, capitalLogs, settings]);
 
   // Modal open helpers (memoized)
   const handleOpenEditTrade = useCallback((trade) => {
@@ -243,6 +357,9 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenInstallApp={() => setIsInstallModalOpen(true)}
+        syncStatus={syncStatus}
+        lastSyncTime={lastSyncTime}
+        onSyncNow={triggerSync}
       />
 
       {/* Main Content Area */}
@@ -255,6 +372,9 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onOpenInstallApp={() => setIsInstallModalOpen(true)}
+          syncStatus={syncStatus}
+          lastSyncTime={lastSyncTime}
+          onSyncNow={triggerSync}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-24 lg:pb-8 min-w-0">
