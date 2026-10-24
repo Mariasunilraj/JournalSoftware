@@ -14,13 +14,8 @@ function localSyncPlugin() {
     name: 'local-sync-plugin',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        // Handle CORS for local network and cross-device access
         if (req.url && req.url.startsWith('/api/sync')) {
-          const url = new URL(req.url, 'http://localhost')
-          const userId = url.searchParams.get('userId') || 'default'
-          const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
-          const userFile = path.join(dataDir, `user_${safeUserId}.json`)
-
-          // Handle CORS for local network and cross-device access
           res.setHeader('Access-Control-Allow-Origin', '*')
           res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -30,6 +25,52 @@ function localSyncPlugin() {
             res.end()
             return
           }
+
+          // Registered Users DB Sync Endpoint
+          if (req.url.startsWith('/api/sync/users')) {
+            const usersFile = path.join(dataDir, 'users.json')
+            if (req.method === 'GET') {
+              res.setHeader('Content-Type', 'application/json')
+              if (fs.existsSync(usersFile)) {
+                res.end(fs.readFileSync(usersFile, 'utf-8'))
+              } else {
+                res.end(JSON.stringify([]))
+              }
+              return
+            }
+            if (req.method === 'POST') {
+              let body = ''
+              req.on('data', (chunk) => { body += chunk })
+              req.on('end', () => {
+                try {
+                  fs.writeFileSync(usersFile, body, 'utf-8')
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ success: true }))
+                } catch (err) {
+                  res.statusCode = 400
+                  res.end(JSON.stringify({ error: err.message }))
+                }
+              })
+              return
+            }
+          }
+
+          // Server Health / Status Check Endpoint
+          if (req.url.startsWith('/api/sync/status')) {
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({
+              online: true,
+              timestamp: Date.now(),
+              server: 'Delta Journal Master Sync Engine',
+            }))
+            return
+          }
+
+          // User Data Sync (Trades, Diary, Capital, Risk Settings)
+          const url = new URL(req.url, 'http://localhost')
+          const userId = url.searchParams.get('userId') || 'default'
+          const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
+          const userFile = path.join(dataDir, `user_${safeUserId}.json`)
 
           if (req.method === 'GET') {
             res.setHeader('Content-Type', 'application/json')
@@ -50,7 +91,7 @@ function localSyncPlugin() {
             req.on('end', () => {
               try {
                 const parsed = JSON.parse(body)
-                parsed.updatedAt = Date.now()
+                parsed.updatedAt = parsed.updatedAt || Date.now()
                 fs.writeFileSync(userFile, JSON.stringify(parsed, null, 2), 'utf-8')
                 res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ success: true, updatedAt: parsed.updatedAt }))

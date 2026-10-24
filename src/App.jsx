@@ -12,10 +12,15 @@ import PrintReport from './components/PrintReport';
 import BottomNav from './components/BottomNav';
 import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
+import SyncModal from './components/SyncModal';
 import {
   pushDataToSyncServer,
   pullDataFromSyncServer,
   mergeDatasets,
+  markLocalModified,
+  getLastLocalModified,
+  getLastSynced,
+  setLastSynced,
 } from './utils/syncManager';
 
 import {
@@ -99,6 +104,7 @@ export default function App() {
   const [selectedTradeForView, setSelectedTradeForView] = useState(null);
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'offline'
   const [lastSyncTime, setLastSyncTime] = useState(null);
@@ -110,6 +116,8 @@ export default function App() {
     try {
       const serverData = await pullDataFromSyncServer(currentUser.id);
       const localData = loadUserData(currentUser.id);
+      const lastSyncTimeVal = getLastSynced(currentUser.id);
+      const lastModifiedVal = getLastLocalModified(currentUser.id);
 
       // If server is empty and local device has data, seed the server
       if (
@@ -123,7 +131,7 @@ export default function App() {
       }
 
       if (serverData && (serverData.trades || serverData.diary || serverData.capitalLogs || serverData.settings)) {
-        const merged = mergeDatasets(localData, serverData);
+        const merged = mergeDatasets(localData, serverData, lastSyncTimeVal, lastModifiedVal);
         setTrades(merged.trades);
         setDiary(merged.diary);
         setCapitalLogs(merged.capitalLogs);
@@ -136,8 +144,13 @@ export default function App() {
         saveUserCapitalLogs(currentUser.id, merged.capitalLogs);
         if (merged.settings) saveUserSettings(currentUser.id, merged.settings);
 
-        // Update server with merged set
-        await pushDataToSyncServer(currentUser.id, merged);
+        // Update server if local had newer offline modifications merged in
+        if (lastModifiedVal > (serverData.updatedAt || 0)) {
+          await pushDataToSyncServer(currentUser.id, merged);
+        } else {
+          setLastSynced(currentUser.id, serverData.updatedAt || Date.now());
+        }
+
         setSyncStatus('synced');
         setLastSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       } else {
@@ -148,16 +161,24 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Periodic Auto-Sync & Tab Focus Wakeup (every 10s)
+  // Periodic Auto-Sync, Tab Focus & Mobile Wakeup (every 6s)
   useEffect(() => {
     if (!currentUser) return;
     triggerSync();
-    const interval = setInterval(triggerSync, 10000);
-    const onFocus = () => triggerSync();
-    window.addEventListener('focus', onFocus);
+    const interval = setInterval(triggerSync, 6000);
+    const onWake = () => {
+      if (document.visibilityState === 'visible' || !document.hidden) {
+        triggerSync();
+      }
+    };
+    window.addEventListener('focus', onWake);
+    window.addEventListener('online', onWake);
+    document.addEventListener('visibilitychange', onWake);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('focus', onWake);
+      window.removeEventListener('online', onWake);
+      document.removeEventListener('visibilitychange', onWake);
     };
   }, [currentUser, triggerSync]);
 
@@ -200,10 +221,17 @@ export default function App() {
   // Persist trades with Row-Level Security (RLS) & Real-time Auto-Sync
   const handleSaveTrade = useCallback((tradeData) => {
     if (!currentUser) return;
+    const now = Date.now();
+    markLocalModified(currentUser.id);
     setTrades((prev) => {
       const existsIndex = prev.findIndex((t) => t.id === tradeData.id);
       let updated;
-      const stampedTrade = { ...tradeData, userId: currentUser.id };
+      const stampedTrade = {
+        ...tradeData,
+        userId: currentUser.id,
+        createdAt: tradeData.createdAt || now,
+        updatedAt: now,
+      };
       if (existsIndex >= 0) {
         updated = [...prev];
         updated[existsIndex] = stampedTrade;
@@ -224,6 +252,7 @@ export default function App() {
 
   const handleDeleteTrade = useCallback((tradeId) => {
     if (!currentUser) return;
+    markLocalModified(currentUser.id);
     setTrades((prev) => {
       const updated = prev.filter((t) => t.id !== tradeId);
       saveUserTrades(currentUser.id, updated);
@@ -243,6 +272,8 @@ export default function App() {
       id: `TRD-${Date.now().toString().slice(-6)}`,
       symbol: `${tradeData.symbol} (Copy)`,
       date: new Date().toISOString().slice(0, 10),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     handleSaveTrade(duplicated);
   }, [handleSaveTrade]);
@@ -250,10 +281,17 @@ export default function App() {
   // Persist diary with RLS & Auto-Sync
   const handleSaveDiary = useCallback((entry) => {
     if (!currentUser) return;
+    const now = Date.now();
+    markLocalModified(currentUser.id);
     setDiary((prev) => {
       const existsIndex = prev.findIndex((d) => (d.id && d.id === entry.id) || d.date === entry.date);
       let updated;
-      const stampedEntry = { ...entry, userId: currentUser.id };
+      const stampedEntry = {
+        ...entry,
+        userId: currentUser.id,
+        createdAt: entry.createdAt || now,
+        updatedAt: now,
+      };
       if (existsIndex >= 0) {
         updated = [...prev];
         updated[existsIndex] = stampedEntry;
@@ -273,6 +311,7 @@ export default function App() {
 
   const handleDeleteDiary = useCallback((idOrDate) => {
     if (!currentUser) return;
+    markLocalModified(currentUser.id);
     setDiary((prev) => {
       const updated = prev.filter((d) => d.id !== idOrDate && d.date !== idOrDate);
       saveUserDiary(currentUser.id, updated);
@@ -289,8 +328,15 @@ export default function App() {
   // Persist capital with RLS & Auto-Sync
   const handleAddCapitalLog = useCallback((log) => {
     if (!currentUser) return;
+    const now = Date.now();
+    markLocalModified(currentUser.id);
     setCapitalLogs((prev) => {
-      const stampedLog = { ...log, userId: currentUser.id };
+      const stampedLog = {
+        ...log,
+        userId: currentUser.id,
+        createdAt: log.createdAt || now,
+        updatedAt: now,
+      };
       const updated = [stampedLog, ...prev];
       saveUserCapitalLogs(currentUser.id, updated);
       pushDataToSyncServer(currentUser.id, {
@@ -306,6 +352,7 @@ export default function App() {
   // Bulk restore or sample load with RLS & Auto-Sync
   const handleUpdateAllData = useCallback(({ trades: newTrades, diary: newDiary, capitalLogs: newCap, settings: newSet }) => {
     if (!currentUser) return;
+    markLocalModified(currentUser.id);
     if (newTrades) {
       setTrades(newTrades);
       saveUserTrades(currentUser.id, newTrades);
@@ -360,6 +407,7 @@ export default function App() {
         syncStatus={syncStatus}
         lastSyncTime={lastSyncTime}
         onSyncNow={triggerSync}
+        onOpenSyncModal={() => setIsSyncModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -375,6 +423,7 @@ export default function App() {
           syncStatus={syncStatus}
           lastSyncTime={lastSyncTime}
           onSyncNow={triggerSync}
+          onOpenSyncModal={() => setIsSyncModalOpen(true)}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-24 lg:pb-8 min-w-0">
@@ -496,6 +545,19 @@ export default function App() {
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+      />
+
+      {/* Real-time Phone & Laptop Master Sync Center */}
+      <SyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        syncStatus={syncStatus}
+        lastSyncTime={lastSyncTime}
+        onSyncNow={triggerSync}
+        currentUser={currentUser}
+        tradesCount={trades.length}
+        diaryCount={diary.length}
+        capitalCount={capitalLogs.length}
       />
     </div>
   );

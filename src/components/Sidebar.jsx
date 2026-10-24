@@ -25,6 +25,7 @@ export default function Sidebar({
   syncStatus,
   lastSyncTime,
   onSyncNow,
+  onOpenSyncModal,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [marketStatus, setMarketStatus] = useState({ isOpen: false, text: 'CLOSED' });
@@ -271,17 +272,22 @@ export default function Sidebar({
 
             {/* Real-time Cross-Device Sync Indicator */}
             <div className="flex items-center justify-between text-[11px] text-neutral-400 px-2 py-1 bg-black/50 rounded-xl border border-neutral-800">
-              <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={onOpenSyncModal || onSyncNow}
+                className="flex items-center space-x-1.5 text-left hover:opacity-80 transition"
+                title="Open Device Sync Center"
+              >
                 <span className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'offline' ? 'bg-neutral-500' : 'bg-emerald-400 shadow-[0_0_6px_#00e676]'}`} />
-                <span className="font-semibold text-neutral-300">
+                <span className="font-semibold text-neutral-300 hover:text-white">
                   {syncStatus === 'syncing' ? 'Syncing...' : 'Phone & PC Linked'}
                 </span>
-              </div>
+              </button>
               <button
                 type="button"
                 onClick={onSyncNow}
-                className="text-[10px] text-emerald-400 hover:text-white font-bold"
-                title="Trigger Manual Sync"
+                className="text-[10px] text-emerald-400 hover:text-white font-bold transition active:scale-95 px-1 py-0.5 rounded hover:bg-neutral-800"
+                title="Trigger Immediate Sync"
               >
                 Sync Now
               </button>
