@@ -1,0 +1,61 @@
+{
+  "id": "/",
+  "name": "Delta Journal",
+  "short_name": "Delta Journal",
+  "description": "Professional Indian Stock Market, Futures & Options Trading Journal",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo-circle.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1024x486",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Trade Journal Dashboard"
+    },
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "540x1200",
+      "type": "image/jpeg",
+      "label": "Mobile Login"
+    }
+  ],
+  "categories": ["finance", "productivity", "utilities"]
+}

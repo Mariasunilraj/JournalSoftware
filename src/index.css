@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    font-size: 14px; /* Phone (compact, high-density, sharp) */
+    scroll-behavior: smooth;
+  }
+  @media (min-width: 640px) {
+    html {
+      font-size: 15px; /* Tablet (comfortably larger touch targets & text) */
+    }
+  }
+  @media (min-width: 1024px) {
+    html {
+      font-size: 16px; /* Laptop / Desktop (optimal readability on 1080p/Retina) */
+    }
+  }
+  @media (min-width: 1536px) {
+    html {
+      font-size: 16.5px; /* 2K / 4K / Ultra-wide trading monitors */
+    }
+  }
+  body {
+    @apply bg-black text-white antialiased font-sans selection:bg-emerald-500 selection:text-black;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: clip;
+  }
+}
+
+/* Custom Fintech modern scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* Touch-friendly momentum scrolling & smooth motion */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Hardware accelerated smooth motion */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.hardware-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Hide scrollbar for clean horizontal tab strips */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area for mobile devices (iPhone notch & home indicator) */
+.pb-safe {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* Print report styling */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
