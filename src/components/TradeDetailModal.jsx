@@ -75,10 +75,8 @@ export default function TradeDetailModal({ isOpen, onClose, trade, onEdit, onDel
             </button>
             <button
               onClick={() => {
-                if (confirm('Delete this trade permanently?')) {
-                  onDelete(trade.id);
-                  onClose();
-                }
+                onDelete(trade);
+                onClose();
               }}
               className="p-2 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-500/30 transition active:scale-95"
               title="Delete Trade"

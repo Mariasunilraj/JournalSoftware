@@ -109,13 +109,16 @@ export async function pullDataFromSyncServer(userId) {
 /**
  * Intelligently merges server data with local device data without duplicates or zombie resurrects
  */
-export function mergeDatasets(local, server, lastSyncedAt = 0, lastModifiedAt = 0) {
+export function mergeDatasets(local, server, lastSyncedAt = 0, lastModifiedAt = 0, deletedIds = []) {
   if (!server) return local;
+
+  const deletedSet = new Set(deletedIds || []);
 
   // If server is newer than local modifications, server is authoritative ground truth
   if (server.updatedAt && server.updatedAt >= lastModifiedAt) {
+    const cleanTrades = (server.trades || []).filter((t) => t && t.id && !deletedSet.has(t.id));
     return {
-      trades: server.trades || [],
+      trades: cleanTrades,
       diary: server.diary || [],
       capitalLogs: server.capitalLogs || [],
       settings: server.settings || local.settings,
@@ -125,12 +128,12 @@ export function mergeDatasets(local, server, lastSyncedAt = 0, lastModifiedAt = 
   // Conflict reconciliation: device was used offline and has local modifications
   const tradeMap = new Map();
   (server.trades || []).forEach((t) => {
-    if (t.id) tradeMap.set(t.id, t);
+    if (t.id && !deletedSet.has(t.id)) tradeMap.set(t.id, t);
   });
 
   // Preserve only brand new trades created offline (createdAt > lastSyncedAt) or modified
   (local.trades || []).forEach((t) => {
-    if (t.id) {
+    if (t.id && !deletedSet.has(t.id)) {
       const isNewOfflineTrade = (t.createdAt && t.createdAt > lastSyncedAt) || (t.updatedAt && t.updatedAt > lastSyncedAt);
       if (tradeMap.has(t.id)) {
         // Trade exists on both: choose latest updated
@@ -138,11 +141,11 @@ export function mergeDatasets(local, server, lastSyncedAt = 0, lastModifiedAt = 
         const localTime = t.updatedAt || 0;
         const serverTime = serverTrade.updatedAt || 0;
         tradeMap.set(t.id, localTime >= serverTime ? t : serverTrade);
-      } else if (isNewOfflineTrade || lastSyncedAt === 0) {
+      } else if (isNewOfflineTrade) {
         // New trade created locally while offline
         tradeMap.set(t.id, t);
       }
-      // If trade existed before last sync and was removed on server, it was deleted -> DO NOT re-add!
+      // If trade existed before last sync or was deleted, DO NOT re-add!
     }
   });
 

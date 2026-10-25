@@ -881,10 +881,8 @@ export default function TradeModal({ isOpen, onClose, onSave, onDelete, initialT
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('Delete this trade record?')) {
-                        onDelete(formData.id);
-                        onClose();
-                      }
+                      onDelete(formData);
+                      onClose();
                     }}
                     className="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 border border-rose-500/30"
                     title="Delete Trade"

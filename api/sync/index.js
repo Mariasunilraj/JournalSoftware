@@ -53,7 +53,12 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-      const trades = JSON.stringify(body.trades || []);
+      const deletedIds = Array.isArray(body.deletedTradeIds) ? body.deletedTradeIds : [];
+      const deletedSet = new Set(deletedIds);
+      const rawTrades = Array.isArray(body.trades) ? body.trades : [];
+      const cleanTrades = rawTrades.filter((t) => t && t.id && !deletedSet.has(t.id));
+
+      const trades = JSON.stringify(cleanTrades);
       const diary = JSON.stringify(body.diary || []);
       const capitalLogs = JSON.stringify(body.capitalLogs || []);
       const settings = JSON.stringify(body.settings || null);

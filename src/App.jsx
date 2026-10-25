@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './components/Dashboard';
@@ -12,6 +13,7 @@ import PrintReport from './components/PrintReport';
 import BottomNav from './components/BottomNav';
 import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
+import ConfirmDeleteModal from './components/ConfirmDeleteModal';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import {
@@ -31,6 +33,8 @@ import {
   saveUserCapitalLogs,
   saveUserSettings,
   wipeUserAccountData,
+  getDeletedTradeIds,
+  addDeletedTradeId,
 } from './utils/storage';
 import { calculateAnalytics } from './utils/analytics';
 import { getActiveSession, logout as authLogout, initAuth, PRIMARY_USER } from './utils/auth';
@@ -103,11 +107,18 @@ export default function App() {
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
   const [selectedTradeForView, setSelectedTradeForView] = useState(null);
+  const [tradeToDelete, setTradeToDelete] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'offline'
   const [lastSyncTime, setLastSyncTime] = useState(null);
+
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // Cross-Device Sync Engine (Phone <-> Laptop Master Sync)
   const triggerSync = useCallback(async () => {
@@ -118,20 +129,24 @@ export default function App() {
       const localData = loadUserData(currentUser.id);
       const lastSyncTimeVal = getLastSynced(currentUser.id);
       const lastModifiedVal = getLastLocalModified(currentUser.id);
+      const deletedIds = getDeletedTradeIds(currentUser.id);
 
-      // If server is empty and local device has data, seed the server
+      // If server has never been initialized and local device has data, seed the server
       if (
-        (!serverData || (!serverData.trades?.length && !serverData.diary?.length && !serverData.capitalLogs?.length)) &&
+        (!serverData || !serverData.updatedAt) &&
         (localData.trades.length || localData.diary.length || localData.capitalLogs.length)
       ) {
-        await pushDataToSyncServer(currentUser.id, localData);
+        await pushDataToSyncServer(currentUser.id, {
+          ...localData,
+          deletedTradeIds: deletedIds,
+        });
         setSyncStatus('synced');
         setLastSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         return;
       }
 
       if (serverData && (serverData.trades || serverData.diary || serverData.capitalLogs || serverData.settings)) {
-        const merged = mergeDatasets(localData, serverData, lastSyncTimeVal, lastModifiedVal);
+        const merged = mergeDatasets(localData, serverData, lastSyncTimeVal, lastModifiedVal, deletedIds);
         setTrades(merged.trades);
         setDiary(merged.diary);
         setCapitalLogs(merged.capitalLogs);
@@ -146,7 +161,10 @@ export default function App() {
 
         // Update server if local had newer offline modifications merged in
         if (lastModifiedVal > (serverData.updatedAt || 0)) {
-          await pushDataToSyncServer(currentUser.id, merged);
+          await pushDataToSyncServer(currentUser.id, {
+            ...merged,
+            deletedTradeIds: deletedIds,
+          });
         } else {
           setLastSynced(currentUser.id, serverData.updatedAt || Date.now());
         }
@@ -250,21 +268,44 @@ export default function App() {
     });
   }, [currentUser, diary, capitalLogs, settings]);
 
-  const handleDeleteTrade = useCallback((tradeId) => {
-    if (!currentUser) return;
+  const handleDeleteTrade = useCallback((tradeOrId) => {
+    if (!currentUser || !tradeOrId) return;
+    const tradeId = typeof tradeOrId === 'string' ? tradeOrId : tradeOrId.id;
+    if (!tradeId) return;
+
+    // 1. Add to persistent tombstone store
+    const deletedIds = addDeletedTradeId(currentUser.id, tradeId);
     markLocalModified(currentUser.id);
+
+    // 2. Remove immediately from local storage and React state
+    let updatedTrades = [];
     setTrades((prev) => {
-      const updated = prev.filter((t) => t.id !== tradeId);
-      saveUserTrades(currentUser.id, updated);
-      pushDataToSyncServer(currentUser.id, {
-        trades: updated,
-        diary,
-        capitalLogs,
-        settings,
-      });
-      return updated;
+      updatedTrades = prev.filter((t) => t.id !== tradeId);
+      saveUserTrades(currentUser.id, updatedTrades);
+      return updatedTrades;
     });
-  }, [currentUser, diary, capitalLogs, settings]);
+
+    // 3. Immediately push deletion to Neon Cloud
+    pushDataToSyncServer(currentUser.id, {
+      trades: updatedTrades,
+      diary,
+      capitalLogs,
+      settings,
+      deletedTradeIds: deletedIds,
+    });
+
+    showToast('Trade record deleted successfully');
+  }, [currentUser, diary, capitalLogs, settings, showToast]);
+
+  const handleRequestDeleteTrade = useCallback((tradeOrId) => {
+    if (!tradeOrId) return;
+    if (typeof tradeOrId === 'string') {
+      const found = trades.find((t) => t.id === tradeOrId);
+      setTradeToDelete(found || { id: tradeOrId, symbol: tradeOrId });
+    } else {
+      setTradeToDelete(tradeOrId);
+    }
+  }, [trades]);
 
   const handleDuplicateTrade = useCallback((tradeData) => {
     const duplicated = {
@@ -424,7 +465,7 @@ export default function App() {
               trades={trades}
               onOpenTradeModal={handleOpenEditTrade}
               onViewTrade={handleOpenViewTrade}
-              onDeleteTrade={handleDeleteTrade}
+              onDeleteTrade={handleRequestDeleteTrade}
               onDuplicateTrade={handleDuplicateTrade}
               onSaveTrade={handleSaveTrade}
             />
@@ -497,7 +538,11 @@ export default function App() {
             setEditingTrade(null);
           }}
           onSave={handleSaveTrade}
-          onDelete={handleDeleteTrade}
+          onDelete={(trade) => {
+            setIsTradeModalOpen(false);
+            setEditingTrade(null);
+            handleRequestDeleteTrade(trade);
+          }}
           initialTrade={editingTrade}
           defaultBrokerage={settings.defaultBrokeragePerOrder || 20}
         />
@@ -512,9 +557,9 @@ export default function App() {
             setSelectedTradeForView(null);
             handleOpenEditTrade(t);
           }}
-          onDelete={(id) => {
-            handleDeleteTrade(id);
+          onDelete={(trade) => {
             setSelectedTradeForView(null);
+            handleRequestDeleteTrade(trade);
           }}
           onDuplicate={(t) => {
             handleDuplicateTrade(t);
@@ -538,6 +583,29 @@ export default function App() {
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
       />
+
+      {/* Custom In-App Confirmation Modal (Never blocked by browsers/PWAs) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(tradeToDelete)}
+        onClose={() => setTradeToDelete(null)}
+        onConfirm={() => {
+          if (tradeToDelete) {
+            handleDeleteTrade(tradeToDelete);
+            setTradeToDelete(null);
+          }
+        }}
+        title="Delete Trade from Journal"
+        itemName={tradeToDelete ? `${tradeToDelete.symbol || 'Trade'} (${tradeToDelete.id})` : ''}
+        message="Are you sure you want to permanently delete this trade? This will remove the execution from your journal and recalculate your P&L."
+      />
+
+      {/* Instant Action Feedback Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-neutral-900 border border-emerald-500/40 text-emerald-400 px-4 py-2.5 rounded-xl shadow-2xl text-xs font-bold flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {/* Vercel Web Analytics & Speed Insights Real-User Monitoring */}
       <Analytics />

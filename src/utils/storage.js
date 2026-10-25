@@ -18,7 +18,41 @@ export function getUserStorageKeys(userId) {
     diary: `delta_usr_${uid}_diary_v2`,
     capital: `delta_usr_${uid}_capital_v2`,
     settings: `delta_usr_${uid}_settings_v2`,
+    deletedTrades: `delta_usr_${uid}_deleted_trades_v1`,
   };
+}
+
+/**
+ * Tombstone tracking for deleted trades to prevent zombie resurrection across sync
+ */
+export function getDeletedTradeIds(userId) {
+  if (!userId) return [];
+  const keys = getUserStorageKeys(userId);
+  try {
+    const raw = localStorage.getItem(keys.deletedTrades);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveDeletedTradeIds(userId, ids) {
+  if (!userId) return;
+  const keys = getUserStorageKeys(userId);
+  try {
+    localStorage.setItem(keys.deletedTrades, JSON.stringify(ids || []));
+  } catch (e) {}
+}
+
+export function addDeletedTradeId(userId, tradeId) {
+  if (!userId || !tradeId) return [];
+  const current = getDeletedTradeIds(userId);
+  if (!current.includes(tradeId)) {
+    const updated = [...current, tradeId];
+    saveDeletedTradeIds(userId, updated);
+    return updated;
+  }
+  return current;
 }
 
 /**
@@ -67,8 +101,14 @@ export function loadUserData(userId) {
     let capitalLogs = rawCapital ? JSON.parse(rawCapital) : [];
     let settings = rawSettings ? JSON.parse(rawSettings) : DEFAULT_RISK_SETTINGS;
 
-    // Strict RLS filter: ensure every row belongs exclusively to this user
-    trades = (trades || []).filter((t) => !t.userId || t.userId === userId).map((t) => ({ ...t, userId }));
+    // Strict RLS filter & Tombstone purge: ensure deleted trades are never resurrected
+    const deletedIds = getDeletedTradeIds(userId);
+    const deletedSet = new Set(deletedIds);
+
+    trades = (trades || [])
+      .filter((t) => !deletedSet.has(t.id))
+      .filter((t) => !t.userId || t.userId === userId)
+      .map((t) => ({ ...t, userId }));
     diary = (diary || []).filter((d) => !d.userId || d.userId === userId).map((d) => ({ ...d, userId }));
     capitalLogs = (capitalLogs || []).filter((c) => !c.userId || c.userId === userId).map((c) => ({ ...c, userId }));
 

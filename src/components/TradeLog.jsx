@@ -785,13 +785,12 @@ export default function TradeLog({
                           <Copy className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm('Delete this trade from journal?')) {
-                              onDeleteTrade(trade.id);
-                            }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteTrade(trade);
                           }}
                           className="p-2 rounded-xl text-neutral-400 hover:text-rose-400 bg-neutral-900 border border-neutral-800 hover:border-rose-500/30 active:scale-95 transition"
-                          title="Delete"
+                          title="Delete Trade"
                         >
                           <Trash2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                         </button>
@@ -1009,13 +1008,12 @@ export default function TradeLog({
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm('Delete this trade record?')) {
-                                onDeleteTrade(trade.id);
-                              }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteTrade(trade);
                             }}
                             className="p-1 rounded text-neutral-400 hover:text-rose-400"
-                            title="Delete"
+                            title="Delete Trade"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
