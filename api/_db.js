@@ -4,7 +4,27 @@ let sqlClient = null;
 let isInitialized = false;
 
 export function getDatabase() {
-  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  // Support STORAGE_URL (from Vercel Neon screenshot), POSTGRES_URL, DATABASE_URL, or any postgres connection string
+  let connectionString =
+    process.env.STORAGE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.STORAGE_DATABASE_URL ||
+    process.env.NEON_DATABASE_URL;
+
+  // Fallback: Dynamically search for any env var containing a postgres connection URL
+  if (!connectionString) {
+    const matchingKey = Object.keys(process.env).find(
+      (k) =>
+        (k.endsWith('_URL') || k.includes('POSTGRES') || k.includes('DATABASE')) &&
+        typeof process.env[k] === 'string' &&
+        process.env[k].startsWith('postgres')
+    );
+    if (matchingKey) {
+      connectionString = process.env[matchingKey];
+    }
+  }
+
   if (!connectionString) {
     return null;
   }

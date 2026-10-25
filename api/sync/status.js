@@ -11,10 +11,18 @@ export default async function handler(req, res) {
 
   const sql = getDatabase();
   if (!sql) {
+    const relevantKeys = Object.keys(process.env).filter(
+      (k) =>
+        k.includes('URL') ||
+        k.includes('STORAGE') ||
+        k.includes('POSTGRES') ||
+        k.includes('DATABASE')
+    );
     return res.status(200).json({
       online: false,
       database: 'Not Connected',
-      message: 'Please link Neon Postgres via Vercel Storage tab.',
+      message: 'Please link Neon Postgres via Vercel Storage tab and click Redeploy.',
+      detectedEnvKeys: relevantKeys,
       timestamp: Date.now(),
     });
   }
