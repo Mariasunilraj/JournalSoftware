@@ -12,7 +12,8 @@ import PrintReport from './components/PrintReport';
 import BottomNav from './components/BottomNav';
 import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
-import SyncModal from './components/SyncModal';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import {
   pushDataToSyncServer,
   pullDataFromSyncServer,
@@ -104,7 +105,6 @@ export default function App() {
   const [selectedTradeForView, setSelectedTradeForView] = useState(null);
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'offline'
   const [lastSyncTime, setLastSyncTime] = useState(null);
@@ -404,10 +404,6 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onOpenInstallApp={() => setIsInstallModalOpen(true)}
-        syncStatus={syncStatus}
-        lastSyncTime={lastSyncTime}
-        onSyncNow={triggerSync}
-        onOpenSyncModal={() => setIsSyncModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -420,10 +416,6 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onOpenInstallApp={() => setIsInstallModalOpen(true)}
-          syncStatus={syncStatus}
-          lastSyncTime={lastSyncTime}
-          onSyncNow={triggerSync}
-          onOpenSyncModal={() => setIsSyncModalOpen(true)}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-24 lg:pb-8 min-w-0">
@@ -547,18 +539,9 @@ export default function App() {
         onClose={() => setIsInstallModalOpen(false)}
       />
 
-      {/* Real-time Phone & Laptop Master Sync Center */}
-      <SyncModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        syncStatus={syncStatus}
-        lastSyncTime={lastSyncTime}
-        onSyncNow={triggerSync}
-        currentUser={currentUser}
-        tradesCount={trades.length}
-        diaryCount={diary.length}
-        capitalCount={capitalLogs.length}
-      />
+      {/* Vercel Web Analytics & Speed Insights Real-User Monitoring */}
+      <Analytics />
+      <SpeedInsights />
     </div>
   );
 }
