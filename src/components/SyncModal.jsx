@@ -11,8 +11,8 @@ import {
   HardDrive,
   ShieldCheck,
   ArrowRightLeft,
-  UploadCloud,
-  DownloadCloud,
+  Database,
+  Cloud,
 } from 'lucide-react';
 
 export default function SyncModal({
@@ -200,16 +200,34 @@ export default function SyncModal({
 
           {/* How It Works Explainer */}
           <div className="text-[11px] text-neutral-400 leading-relaxed bg-black/40 p-3 rounded-xl border border-neutral-900 space-y-1">
-            <p className="font-bold text-neutral-300">💡 How Local Sync Works:</p>
+            <p className="font-bold text-neutral-300">💡 Dual Sync Modes Available:</p>
             <p>
-              1. <strong>Zero Cloud Third-Parties</strong>: Your trade data is saved directly on your laptop's local disk partition.
+              1. <strong>Local Wi-Fi Mode (Current)</strong>: Zero cloud accounts needed. Your trades are stored locally on your laptop hard drive and sync when both devices are on your home Wi-Fi.
             </p>
             <p>
-              2. <strong>Instant Wi-Fi Sync</strong>: When you add, edit, or delete a trade on either your phone or laptop, the changes automatically sync across both screens.
+              2. <strong>Neon Cloud Mode (Vercel)</strong>: Enables global 24/7 sync across 4G/5G mobile networks. You can link Neon Postgres directly through your Vercel Dashboard with 1 click without creating a separate Neon account!
             </p>
-            <p>
-              3. <strong>Offline Ready</strong>: If you trade outside Wi-Fi, your phone saves all entries in phone storage and synchronizes automatically when you return home.
+          </div>
+
+          {/* Neon Cloud Setup Guide Box */}
+          <div className="p-3 rounded-xl bg-gradient-to-r from-cyan-950/30 to-emerald-950/30 border border-cyan-800/40 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-cyan-400" />
+                Neon Cloud Postgres (via Vercel)
+              </span>
+              <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                100% Free
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-300">
+              Vercel and Neon are official partners. To activate global cloud sync:
             </p>
+            <ol className="list-decimal list-inside text-[11px] text-neutral-400 space-y-1">
+              <li>Deploy this repository on <strong>vercel.com</strong></li>
+              <li>Go to project <strong>Storage</strong> tab ➡️ Click <strong>Create Database</strong></li>
+              <li>Select <strong>Postgres (Neon)</strong> and click <strong>Connect</strong></li>
+            </ol>
           </div>
         </div>
 
