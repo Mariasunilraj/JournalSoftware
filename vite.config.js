@@ -153,11 +153,27 @@ Return ONLY a valid JSON object:
 { "broker": "Broker Name", "tradeDate": "YYYY-MM-DD", "totalCharges": 0, "trades": [...] }`
 
                 const candidateModels = [
-                  'gemini-2.5-flash',
                   'gemini-1.5-flash',
-                  'gemini-flash',
+                  'gemini-1.5-flash-latest',
+                  'gemini-1.5-pro-latest',
                   'gemini-1.5-pro',
                 ]
+
+                const parts = []
+                if (mimeType === 'application/pdf') {
+                  parts.push({
+                    inline_data: {
+                      mime_type: 'application/pdf',
+                      data: cleanBase64,
+                    },
+                  })
+                } else {
+                  const textContent = Buffer.from(cleanBase64, 'base64').toString('utf-8')
+                  parts.push({
+                    text: `Broker Tradebook / P&L Export Data (CSV):\n\`\`\`csv\n${textContent}\n\`\`\``,
+                  })
+                }
+                parts.push({ text: systemPrompt })
 
                 let gRes = null
                 let lastErrText = ''
@@ -169,7 +185,7 @@ Return ONLY a valid JSON object:
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: cleanBase64 } }, { text: systemPrompt }] }],
+                        contents: [{ parts }],
                         generationConfig: { response_mime_type: 'application/json', temperature: 0.1 }
                       })
                     })

@@ -67,20 +67,29 @@ IMPORTANT:
 
     const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
 
+    const parts = [];
+    if (mimeType === 'application/pdf') {
+      parts.push({
+        inline_data: {
+          mime_type: 'application/pdf',
+          data: cleanBase64,
+        },
+      });
+    } else {
+      // For CSV / Excel text, send as direct text prompt (Gemini accepts text natively)
+      const textContent = Buffer.from(cleanBase64, 'base64').toString('utf-8');
+      parts.push({
+        text: `Broker Tradebook / P&L Export Data (CSV):\n\`\`\`csv\n${textContent}\n\`\`\``,
+      });
+    }
+    parts.push({
+      text: systemPrompt,
+    });
+
     const requestPayload = {
       contents: [
         {
-          parts: [
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: cleanBase64,
-              },
-            },
-            {
-              text: systemPrompt,
-            },
-          ],
+          parts,
         },
       ],
       generationConfig: {
@@ -90,9 +99,9 @@ IMPORTANT:
     };
 
     const candidateModels = [
-      'gemini-2.5-flash',
       'gemini-1.5-flash',
-      'gemini-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-pro-latest',
       'gemini-1.5-pro',
     ];
 

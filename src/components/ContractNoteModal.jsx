@@ -35,6 +35,7 @@ export default function ContractNoteModal({
   const [file, setFile] = useState(null);
   const [fileBase64, setFileBase64] = useState('');
   const [fileCsvText, setFileCsvText] = useState('');
+  const [excelRows, setExcelRows] = useState([]);
   const [fileType, setFileType] = useState('excel'); // 'excel' | 'csv' | 'pdf'
   const [isDragging, setIsDragging] = useState(false);
   const [status, setStatus] = useState('idle'); // 'idle' | 'reading' | 'parsing' | 'review'
@@ -96,6 +97,7 @@ export default function ContractNoteModal({
       try {
         const { rows, csvText } = await readExcelFile(selectedFile);
         setFileCsvText(csvText);
+        setExcelRows(rows || []);
 
         // Try direct client-side smart matching
         const matched = matchTradebookExecutions(rows);
@@ -121,9 +123,8 @@ export default function ContractNoteModal({
           setSelectedIndices(matched.map((_, i) => i));
           setStatus('review');
         } else {
-          // If direct rule-matching didn't find pairs, give user option to parse with AI
           setStatus('idle');
-          setError('Excel file loaded. Click "AI Enhanced Parse" to extract and match all trade executions.');
+          setError(null);
         }
       } catch (err) {
         setStatus('idle');
@@ -154,6 +155,28 @@ export default function ContractNoteModal({
   const handleParseWithAI = async () => {
     setStatus('parsing');
     setError(null);
+
+    // 1. Instant Client-Side Check: If Excel/CSV rows can be matched directly, skip API call entirely!
+    if (fileType !== 'pdf' && excelRows && excelRows.length > 0) {
+      try {
+        const directMatches = matchTradebookExecutions(excelRows);
+        if (directMatches && directMatches.length > 0) {
+          const totalCharges = directMatches.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
+          setParsedData({
+            broker: 'Broker Tradebook / P&L Excel',
+            tradeDate: directMatches[0]?.date || new Date().toISOString().slice(0, 10),
+            totalCharges: Number(totalCharges.toFixed(2)),
+            trades: directMatches,
+            sourceType: fileType,
+          });
+          setSelectedIndices(directMatches.map((_, i) => i));
+          setStatus('review');
+          return;
+        }
+      } catch (err) {
+        console.warn('Direct matching fallback to AI:', err);
+      }
+    }
 
     try {
       let payload = {};
@@ -300,6 +323,7 @@ export default function ContractNoteModal({
     setFile(null);
     setFileBase64('');
     setFileCsvText('');
+    setExcelRows([]);
     setStatus('idle');
     setError(null);
     setParsedData({ broker: '', tradeDate: '', totalCharges: 0, trades: [], sourceType: 'excel' });
