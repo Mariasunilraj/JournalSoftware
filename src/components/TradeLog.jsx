@@ -19,17 +19,21 @@ import {
   AlertTriangle,
   FileText,
   FileSpreadsheet,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { RULE_VIOLATIONS } from '../utils/constants';
 import { formatINR } from '../utils/calculations';
 import { exportTradesCSV } from '../utils/storage';
 import { calculateIndianCharges } from '../utils/chargesCalculator';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 export default function TradeLog({
   trades,
   onOpenTradeModal,
   onViewTrade,
   onDeleteTrade,
+  onDeleteMultipleTrades,
   onDuplicateTrade,
   onSaveTrade,
   onOpenContractNoteModal,
@@ -349,6 +353,27 @@ export default function TradeLog({
       setSortOrder('desc');
     }
   };
+
+  // Bulk Trade Selection & Mass Deletion
+  const [selectedTradeIds, setSelectedTradeIds] = useState([]);
+  const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
+
+  const filteredIds = useMemo(() => filteredTrades.map((t) => t.id), [filteredTrades]);
+  const isAllSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedTradeIds.includes(id));
+
+  const handleToggleSelectAll = useCallback(() => {
+    if (isAllSelected) {
+      setSelectedTradeIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
+    } else {
+      setSelectedTradeIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  }, [isAllSelected, filteredIds]);
+
+  const toggleSelectTrade = useCallback((tradeId) => {
+    setSelectedTradeIds((prev) =>
+      prev.includes(tradeId) ? prev.filter((id) => id !== tradeId) : [...prev, tradeId]
+    );
+  }, []);
 
   return (
     <div className="space-y-6 pb-12">
@@ -738,6 +763,56 @@ export default function TradeLog({
         </div>
       </div>
 
+      {/* Selection Control & Bulk Delete Action Bar */}
+      {filteredTrades.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-[#090909] border border-neutral-800 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center space-x-3">
+            <label className="flex items-center space-x-2 cursor-pointer font-bold text-white select-none hover:text-emerald-400 transition">
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                onChange={handleToggleSelectAll}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-emerald-500 focus:ring-0 cursor-pointer"
+              />
+              <span>Select All Trades ({filteredTrades.length})</span>
+            </label>
+
+            {selectedTradeIds.length > 0 && (
+              <span className="text-neutral-400 text-xs">
+                • <strong className="text-emerald-400 font-bold">{selectedTradeIds.length}</strong> selected
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {selectedTradeIds.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTradeIds([])}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-semibold border border-neutral-800 transition text-xs"
+                >
+                  Deselect All
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmBulkDeleteOpen(true)}
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600/30 to-red-600/30 hover:from-rose-600/40 hover:to-red-600/40 text-rose-300 border border-rose-500/40 font-bold shadow-sm transition active:scale-95 text-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Delete Selected ({selectedTradeIds.length})</span>
+                </button>
+              </>
+            ) : (
+              <span className="text-[11px] text-neutral-500 hidden sm:inline">
+                Check boxes near any trade to select & delete
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 5. Main Journal Entries Content */}
       {viewMode === 'cards' ? (
         /* JOURNAL CARD VIEW - Fintech Jet Black with Crisp Lines */
@@ -761,16 +836,37 @@ export default function TradeLog({
                 ? trade.ruleViolations.join(', ')
                 : (hasMistake ? 'Rule Violated' : null);
               const tradeType = getTradeType(trade);
+              const isSelected = selectedTradeIds.includes(trade.id);
 
               return (
                 <div
                   key={trade.id}
                   onClick={() => onViewTrade(trade)}
-                  className="p-5 rounded-2xl bg-[#090909] border border-neutral-800 hover:border-neutral-700 shadow-xl transition-all cursor-pointer space-y-3"
+                  className={`p-5 rounded-2xl bg-[#090909] border transition-all cursor-pointer space-y-3 ${
+                    isSelected
+                      ? 'border-emerald-500/70 bg-emerald-500/[0.04] shadow-emerald-500/10 shadow-xl'
+                      : 'border-neutral-800 hover:border-neutral-700 shadow-xl'
+                  }`}
                 >
-                  {/* Top Bar: Date, Instrument, Call/Put, Net Profit */}
+                  {/* Top Bar: Checkbox, Date, Instrument, Call/Put, Net Profit */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelectTrade(trade.id);
+                        }}
+                        className="p-1 rounded-lg hover:bg-neutral-800 cursor-pointer flex items-center justify-center mr-0.5"
+                        title={isSelected ? 'Deselect trade' : 'Select trade'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-emerald-500 focus:ring-0 cursor-pointer pointer-events-none"
+                        />
+                      </div>
+
                       <div className="flex items-center space-x-1.5 text-neutral-300 text-xs sm:text-sm font-semibold px-2.5 sm:px-3 py-1 rounded-lg bg-[#111111] border border-neutral-800">
                         <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-400" />
                         <span>{trade.date}</span>
@@ -903,6 +999,15 @@ export default function TradeLog({
             <table className="w-full text-left text-xs sm:text-sm min-w-[850px]">
               <thead className="text-xs sm:text-sm uppercase tracking-wider text-neutral-400 bg-[#111111] border-b border-neutral-800 select-none">
                 <tr>
+                  <th className="py-3 px-3 text-center w-10">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-emerald-500 focus:ring-0 cursor-pointer"
+                      title="Select All Trades"
+                    />
+                  </th>
                   <th onClick={() => handleSort('date')} className="py-3 px-4 cursor-pointer hover:text-white whitespace-nowrap">
                     <div className="flex items-center space-x-1">
                       <span>Date</span>
@@ -941,7 +1046,7 @@ export default function TradeLog({
               <tbody className="divide-y divide-neutral-800 text-xs sm:text-sm">
                 {filteredTrades.length === 0 ? (
                   <tr>
-                    <td colSpan="11" className="py-12 text-center text-neutral-500">
+                    <td colSpan="14" className="py-12 text-center text-neutral-500">
                       {trades.length === 0
                         ? 'No trades logged yet in this account. Use the Trade Journal Entry form above to record your first execution!'
                         : 'No journal entries match the current filters.'}
@@ -955,13 +1060,27 @@ export default function TradeLog({
                     ? trade.ruleViolations.join(', ')
                     : (hasMistake ? 'Violated' : 'None');
                   const tradeType = getTradeType(trade);
+                  const isSelected = selectedTradeIds.includes(trade.id);
 
                   return (
                     <tr
                       key={trade.id}
                       onClick={() => onViewTrade(trade)}
-                      className="hover:bg-neutral-900/50 cursor-pointer transition-colors"
+                      className={`cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-emerald-500/10 hover:bg-emerald-500/15'
+                          : 'hover:bg-neutral-900/50'
+                      }`}
                     >
+                      <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectTrade(trade.id)}
+                          className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-emerald-500 focus:ring-0 cursor-pointer"
+                          title={isSelected ? 'Deselect trade' : 'Select trade'}
+                        />
+                      </td>
                       <td className="py-3 px-4 text-neutral-300 whitespace-nowrap font-semibold">
                         {trade.date}
                       </td>
@@ -1055,6 +1174,49 @@ export default function TradeLog({
           </div>
         </div>
       )}
+
+      {/* Floating Bottom Action Bar for Bulk Selection */}
+      {selectedTradeIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center space-x-3.5 animate-in slide-in-from-bottom-4 duration-200">
+          <span className="text-xs font-bold text-neutral-200 whitespace-nowrap">
+            <strong className="text-emerald-400">{selectedTradeIds.length}</strong> trades selected
+          </span>
+          <div className="h-4 w-px bg-neutral-700" />
+          <button
+            type="button"
+            onClick={() => setSelectedTradeIds([])}
+            className="text-xs text-neutral-400 hover:text-white underline font-medium"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsConfirmBulkDeleteOpen(true)}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-600/30 transition active:scale-95 whitespace-nowrap"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete Selected</span>
+          </button>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={isConfirmBulkDeleteOpen}
+        onClose={() => setIsConfirmBulkDeleteOpen(false)}
+        onConfirm={() => {
+          if (onDeleteMultipleTrades) {
+            onDeleteMultipleTrades(selectedTradeIds);
+          } else {
+            selectedTradeIds.forEach((id) => onDeleteTrade(id));
+          }
+          setSelectedTradeIds([]);
+          setIsConfirmBulkDeleteOpen(false);
+        }}
+        title="Delete Selected Trades"
+        itemName={`${selectedTradeIds.length} Trades Selected`}
+        message={`Are you sure you want to permanently delete these ${selectedTradeIds.length} selected trades from your journal? This will remove the executions from your journal, recalculate your P&L, and sync across your devices.`}
+      />
     </div>
   );
 }

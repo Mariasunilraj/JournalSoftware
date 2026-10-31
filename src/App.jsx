@@ -346,6 +346,39 @@ export default function App() {
     showToast('Trade record deleted successfully');
   }, [currentUser, trades, diary, capitalLogs, settings, showToast]);
 
+  const handleDeleteMultipleTrades = useCallback((tradeIds) => {
+    if (!currentUser || !Array.isArray(tradeIds) || tradeIds.length === 0) return;
+    const idSet = new Set(tradeIds);
+
+    // 1. Add all to persistent tombstone store
+    tradeIds.forEach((id) => addDeletedTradeId(currentUser.id, id));
+    markLocalModified(currentUser.id);
+
+    // 2. Synchronously derive updated trades
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.trades && localData.trades.length > 0)
+      ? localData.trades
+      : (trades || []);
+    const updatedTrades = baseList.filter((t) => t && !idSet.has(t.id));
+
+    // 3. Immediately persist to local storage
+    saveUserTrades(currentUser.id, updatedTrades);
+
+    // 4. Update React state immediately
+    setTrades(updatedTrades);
+
+    // 5. Push remaining trades to sync server (Neon Cloud)
+    pushDataToSyncServer(currentUser.id, {
+      trades: updatedTrades,
+      diary: localData.diary || diary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
+      deletedTradeIds: tradeIds,
+    });
+
+    showToast(`Successfully deleted ${tradeIds.length} trades.`);
+  }, [currentUser, trades, diary, capitalLogs, settings, showToast]);
+
   const handleRequestDeleteTrade = useCallback((tradeOrId) => {
     if (!tradeOrId) return;
     if (typeof tradeOrId === 'string') {
@@ -528,6 +561,7 @@ export default function App() {
               onOpenTradeModal={handleOpenEditTrade}
               onViewTrade={handleOpenViewTrade}
               onDeleteTrade={handleRequestDeleteTrade}
+              onDeleteMultipleTrades={handleDeleteMultipleTrades}
               onDuplicateTrade={handleDuplicateTrade}
               onSaveTrade={handleSaveTrade}
               onOpenContractNoteModal={() => setIsContractNoteModalOpen(true)}
