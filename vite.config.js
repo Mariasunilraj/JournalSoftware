@@ -92,6 +92,19 @@ function localSyncPlugin() {
               try {
                 const parsed = JSON.parse(body)
                 parsed.updatedAt = parsed.updatedAt || Date.now()
+
+                // Safety guard for trade deletion
+                const deletedIds = Array.isArray(parsed.deletedTradeIds) ? parsed.deletedTradeIds : []
+                if (deletedIds.length > 0 && (!parsed.trades || parsed.trades.length === 0) && !parsed.isFullReset && fs.existsSync(userFile)) {
+                  try {
+                    const existing = JSON.parse(fs.readFileSync(userFile, 'utf-8'))
+                    if (existing && Array.isArray(existing.trades) && existing.trades.length > 0) {
+                      const deletedSet = new Set(deletedIds)
+                      parsed.trades = existing.trades.filter((t) => t && t.id && !deletedSet.has(t.id))
+                    }
+                  } catch (e) {}
+                }
+
                 fs.writeFileSync(userFile, JSON.stringify(parsed, null, 2), 'utf-8')
                 res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ success: true, updatedAt: parsed.updatedAt }))

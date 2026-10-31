@@ -55,6 +55,22 @@ export function addDeletedTradeId(userId, tradeId) {
   return current;
 }
 
+export function removeDeletedTradeId(userId, tradeId) {
+  if (!userId || !tradeId) return [];
+  const current = getDeletedTradeIds(userId);
+  const updated = current.filter((id) => id !== tradeId);
+  saveDeletedTradeIds(userId, updated);
+  return updated;
+}
+
+export function clearDeletedTradeIds(userId) {
+  if (!userId) return;
+  const keys = getUserStorageKeys(userId);
+  try {
+    localStorage.removeItem(keys.deletedTrades);
+  } catch (e) {}
+}
+
 /**
  * Permanently wipes all trades, diary entries, and capital logs for a user account
  */

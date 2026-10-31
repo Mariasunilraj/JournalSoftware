@@ -217,6 +217,10 @@ export default function App() {
           setDiary(merged.diary);
           setCapitalLogs(merged.capitalLogs);
           if (merged.settings) setSettings(merged.settings);
+          saveUserTrades(user.id, merged.trades);
+          saveUserDiary(user.id, merged.diary);
+          saveUserCapitalLogs(user.id, merged.capitalLogs);
+          if (merged.settings) saveUserSettings(user.id, merged.settings);
         }
       });
     }, 200);
@@ -238,64 +242,75 @@ export default function App() {
 
   // Persist trades with Row-Level Security (RLS) & Real-time Auto-Sync
   const handleSaveTrade = useCallback((tradeData) => {
-    if (!currentUser) return;
+    if (!currentUser || !tradeData) return;
     const now = Date.now();
     markLocalModified(currentUser.id);
-    setTrades((prev) => {
-      const existsIndex = prev.findIndex((t) => t.id === tradeData.id);
-      let updated;
-      const stampedTrade = {
-        ...tradeData,
-        userId: currentUser.id,
-        createdAt: tradeData.createdAt || now,
-        updatedAt: now,
-      };
-      if (existsIndex >= 0) {
-        updated = [...prev];
-        updated[existsIndex] = stampedTrade;
-      } else {
-        updated = [stampedTrade, ...prev];
-      }
-      saveUserTrades(currentUser.id, updated);
-      // Auto push to sync master
-      pushDataToSyncServer(currentUser.id, {
-        trades: updated,
-        diary,
-        capitalLogs,
-        settings,
-      });
-      return updated;
+
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.trades && localData.trades.length > 0)
+      ? localData.trades
+      : (trades || []);
+
+    const existsIndex = baseList.findIndex((t) => t.id === tradeData.id);
+    const stampedTrade = {
+      ...tradeData,
+      userId: currentUser.id,
+      createdAt: tradeData.createdAt || now,
+      updatedAt: now,
+    };
+
+    let updatedTrades;
+    if (existsIndex >= 0) {
+      updatedTrades = [...baseList];
+      updatedTrades[existsIndex] = stampedTrade;
+    } else {
+      updatedTrades = [stampedTrade, ...baseList];
+    }
+
+    saveUserTrades(currentUser.id, updatedTrades);
+    setTrades(updatedTrades);
+
+    pushDataToSyncServer(currentUser.id, {
+      trades: updatedTrades,
+      diary: localData.diary || diary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
     });
-  }, [currentUser, diary, capitalLogs, settings]);
+  }, [currentUser, trades, diary, capitalLogs, settings]);
 
   const handleDeleteTrade = useCallback((tradeOrId) => {
     if (!currentUser || !tradeOrId) return;
-    const tradeId = typeof tradeOrId === 'string' ? tradeOrId : tradeOrId.id;
+    const tradeId = typeof tradeOrId === 'string' ? tradeOrId : tradeOrId?.id;
     if (!tradeId) return;
 
     // 1. Add to persistent tombstone store
     const deletedIds = addDeletedTradeId(currentUser.id, tradeId);
     markLocalModified(currentUser.id);
 
-    // 2. Remove immediately from local storage and React state
-    let updatedTrades = [];
-    setTrades((prev) => {
-      updatedTrades = prev.filter((t) => t.id !== tradeId);
-      saveUserTrades(currentUser.id, updatedTrades);
-      return updatedTrades;
-    });
+    // 2. Synchronously derive updated trades from current state / localStorage
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.trades && localData.trades.length > 0)
+      ? localData.trades
+      : (trades || []);
+    const updatedTrades = baseList.filter((t) => t && t.id !== tradeId);
 
-    // 3. Immediately push deletion to Neon Cloud
+    // 3. Immediately persist updated trades to local storage
+    saveUserTrades(currentUser.id, updatedTrades);
+
+    // 4. Update React state immediately
+    setTrades(updatedTrades);
+
+    // 5. Push remaining trades to sync server (Neon Cloud)
     pushDataToSyncServer(currentUser.id, {
       trades: updatedTrades,
-      diary,
-      capitalLogs,
-      settings,
+      diary: localData.diary || diary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
       deletedTradeIds: deletedIds,
     });
 
     showToast('Trade record deleted successfully');
-  }, [currentUser, diary, capitalLogs, settings, showToast]);
+  }, [currentUser, trades, diary, capitalLogs, settings, showToast]);
 
   const handleRequestDeleteTrade = useCallback((tradeOrId) => {
     if (!tradeOrId) return;
@@ -321,50 +336,63 @@ export default function App() {
 
   // Persist diary with RLS & Auto-Sync
   const handleSaveDiary = useCallback((entry) => {
-    if (!currentUser) return;
+    if (!currentUser || !entry) return;
     const now = Date.now();
     markLocalModified(currentUser.id);
-    setDiary((prev) => {
-      const existsIndex = prev.findIndex((d) => (d.id && d.id === entry.id) || d.date === entry.date);
-      let updated;
-      const stampedEntry = {
-        ...entry,
-        userId: currentUser.id,
-        createdAt: entry.createdAt || now,
-        updatedAt: now,
-      };
-      if (existsIndex >= 0) {
-        updated = [...prev];
-        updated[existsIndex] = stampedEntry;
-      } else {
-        updated = [stampedEntry, ...prev];
-      }
-      saveUserDiary(currentUser.id, updated);
-      pushDataToSyncServer(currentUser.id, {
-        trades,
-        diary: updated,
-        capitalLogs,
-        settings,
-      });
-      return updated;
+
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.diary && localData.diary.length > 0)
+      ? localData.diary
+      : (diary || []);
+
+    const existsIndex = baseList.findIndex((d) => (d.id && d.id === entry.id) || d.date === entry.date);
+    const stampedEntry = {
+      ...entry,
+      userId: currentUser.id,
+      createdAt: entry.createdAt || now,
+      updatedAt: now,
+    };
+
+    let updatedDiary;
+    if (existsIndex >= 0) {
+      updatedDiary = [...baseList];
+      updatedDiary[existsIndex] = stampedEntry;
+    } else {
+      updatedDiary = [stampedEntry, ...baseList];
+    }
+
+    saveUserDiary(currentUser.id, updatedDiary);
+    setDiary(updatedDiary);
+
+    pushDataToSyncServer(currentUser.id, {
+      trades: localData.trades || trades,
+      diary: updatedDiary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
     });
-  }, [currentUser, trades, capitalLogs, settings]);
+  }, [currentUser, trades, diary, capitalLogs, settings]);
 
   const handleDeleteDiary = useCallback((idOrDate) => {
-    if (!currentUser) return;
+    if (!currentUser || !idOrDate) return;
     markLocalModified(currentUser.id);
-    setDiary((prev) => {
-      const updated = prev.filter((d) => d.id !== idOrDate && d.date !== idOrDate);
-      saveUserDiary(currentUser.id, updated);
-      pushDataToSyncServer(currentUser.id, {
-        trades,
-        diary: updated,
-        capitalLogs,
-        settings,
-      });
-      return updated;
+
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.diary && localData.diary.length > 0)
+      ? localData.diary
+      : (diary || []);
+
+    const updatedDiary = baseList.filter((d) => d.id !== idOrDate && d.date !== idOrDate);
+
+    saveUserDiary(currentUser.id, updatedDiary);
+    setDiary(updatedDiary);
+
+    pushDataToSyncServer(currentUser.id, {
+      trades: localData.trades || trades,
+      diary: updatedDiary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
     });
-  }, [currentUser, trades, capitalLogs, settings]);
+  }, [currentUser, trades, diary, capitalLogs, settings]);
 
   // Persist capital with RLS & Auto-Sync
   const handleAddCapitalLog = useCallback((log) => {

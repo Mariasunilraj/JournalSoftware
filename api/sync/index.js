@@ -56,7 +56,20 @@ export default async function handler(req, res) {
       const deletedIds = Array.isArray(body.deletedTradeIds) ? body.deletedTradeIds : [];
       const deletedSet = new Set(deletedIds);
       const rawTrades = Array.isArray(body.trades) ? body.trades : [];
-      const cleanTrades = rawTrades.filter((t) => t && t.id && !deletedSet.has(t.id));
+      let cleanTrades = rawTrades.filter((t) => t && t.id && !deletedSet.has(t.id));
+
+      // CRITICAL SERVER-SIDE DEFENSE:
+      // If client is reporting trade deletions (deletedTradeIds has items), but rawTrades is empty,
+      // and this is NOT an explicit full reset (isFullReset !== true):
+      // NEVER wipe out all trades! Instead, load the existing trades from the DB and remove ONLY the deleted IDs!
+      if (deletedIds.length > 0 && cleanTrades.length === 0 && !body.isFullReset) {
+        const existingRows = await sql`
+          SELECT trades FROM delta_sync_records WHERE user_id = ${userId} LIMIT 1;
+        `;
+        if (existingRows && existingRows.length > 0 && Array.isArray(existingRows[0].trades) && existingRows[0].trades.length > 0) {
+          cleanTrades = existingRows[0].trades.filter((t) => t && t.id && !deletedSet.has(t.id));
+        }
+      }
 
       const trades = JSON.stringify(cleanTrades);
       const diary = JSON.stringify(body.diary || []);
