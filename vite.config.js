@@ -144,7 +144,6 @@ function localSyncPlugin() {
                 }
 
                 const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '')
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
 
                 const systemPrompt = `You are an expert Indian Stock & Derivatives (NSE/BSE) contract note and tradebook parser.
 Analyze all executed trades in the document and match corresponding Buy and Sell orders for the same instrument into complete round-trip trades.
@@ -153,20 +152,50 @@ Statutory charges for Indian Options (FY 2026-27): STT = 0.15% on sell premium t
 Return ONLY a valid JSON object:
 { "broker": "Broker Name", "tradeDate": "YYYY-MM-DD", "totalCharges": 0, "trades": [...] }`
 
-                const gRes = await fetch(geminiUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: cleanBase64 } }, { text: systemPrompt }] }],
-                    generationConfig: { response_mime_type: 'application/json', temperature: 0.1 }
-                  })
-                })
+                const candidateModels = [
+                  'gemini-2.5-flash',
+                  'gemini-1.5-flash',
+                  'gemini-flash',
+                  'gemini-1.5-pro',
+                ]
 
-                if (!gRes.ok) {
-                  const errText = await gRes.text()
-                  res.statusCode = gRes.status
+                let gRes = null
+                let lastErrText = ''
+
+                for (const model of candidateModels) {
+                  try {
+                    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+                    const resp = await fetch(geminiUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: cleanBase64 } }, { text: systemPrompt }] }],
+                        generationConfig: { response_mime_type: 'application/json', temperature: 0.1 }
+                      })
+                    })
+
+                    if (resp.ok) {
+                      gRes = resp
+                      break
+                    }
+
+                    const errText = await resp.text()
+                    lastErrText = errText
+                    if (resp.status === 404 || errText.includes('no longer available') || errText.includes('not found')) {
+                      continue
+                    } else {
+                      gRes = resp
+                      break
+                    }
+                  } catch (e) {
+                    lastErrText = e.message
+                  }
+                }
+
+                if (!gRes || !gRes.ok) {
+                  res.statusCode = gRes?.status || 500
                   res.setHeader('Content-Type', 'application/json')
-                  res.end(JSON.stringify({ error: `Gemini API error: ${errText}` }))
+                  res.end(JSON.stringify({ error: `Gemini API error: ${lastErrText}` }))
                   return
                 }
 

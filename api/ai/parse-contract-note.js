@@ -67,8 +67,6 @@ IMPORTANT:
 
     const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
     const requestPayload = {
       contents: [
         {
@@ -91,29 +89,67 @@ IMPORTANT:
       },
     };
 
-    const response = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestPayload),
-    });
+    const candidateModels = [
+      'gemini-2.5-flash',
+      'gemini-1.5-flash',
+      'gemini-flash',
+      'gemini-1.5-pro',
+    ];
 
-    if (!response.ok) {
-      const errText = await response.text();
-      let parsedErr = errText;
+    let response = null;
+    let lastErrMessage = '';
+
+    for (const model of candidateModels) {
       try {
-        const errJson = JSON.parse(errText);
-        parsedErr = errJson.error?.message || errText;
-      } catch (e) {}
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const respAttempt = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
 
-      if (response.status === 400 && parsedErr.includes('API_KEY_INVALID')) {
+        if (respAttempt.ok) {
+          response = respAttempt;
+          break;
+        }
+
+        const errText = await respAttempt.text();
+        let parsedMsg = errText;
+        try {
+          const errJson = JSON.parse(errText);
+          parsedMsg = errJson.error?.message || errText;
+        } catch (e) {}
+
+        lastErrMessage = parsedMsg;
+
+        // If model is discontinued or not found, try the next model
+        if (
+          respAttempt.status === 404 ||
+          parsedMsg.includes('no longer available') ||
+          parsedMsg.includes('not found') ||
+          parsedMsg.includes('unsupported')
+        ) {
+          continue;
+        } else {
+          // If it's a key or auth error, don't keep trying
+          response = respAttempt;
+          break;
+        }
+      } catch (err) {
+        lastErrMessage = err.message;
+      }
+    }
+
+    if (!response || !response.ok) {
+      if (lastErrMessage.includes('API_KEY_INVALID') || lastErrMessage.includes('API key not valid')) {
         return res.status(400).json({
-          error: 'The provided Gemini API key is invalid. Please verify your key from Google AI Studio.',
+          error: 'The provided Gemini API key is invalid. Please verify your key from Google AI Studio (aistudio.google.com).',
           needsApiKey: true,
         });
       }
 
-      return res.status(response.status).json({
-        error: `Gemini API error: ${parsedErr}`,
+      return res.status(response?.status || 500).json({
+        error: `Gemini API error: ${lastErrMessage || 'Failed to call Gemini model.'}`,
       });
     }
 
