@@ -14,6 +14,7 @@ import BottomNav from './components/BottomNav';
 import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
 import ConfirmDeleteModal from './components/ConfirmDeleteModal';
+import ContractNoteModal from './components/ContractNoteModal';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import {
@@ -111,6 +112,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isContractNoteModalOpen, setIsContractNoteModalOpen] = useState(false);
 
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'offline'
   const [lastSyncTime, setLastSyncTime] = useState(null);
@@ -277,6 +279,38 @@ export default function App() {
       settings: localData.settings || settings,
     });
   }, [currentUser, trades, diary, capitalLogs, settings]);
+
+  const handleImportParsedTrades = useCallback((newTrades) => {
+    if (!currentUser || !Array.isArray(newTrades) || newTrades.length === 0) return;
+    const now = Date.now();
+    markLocalModified(currentUser.id);
+
+    const localData = loadUserData(currentUser.id);
+    const baseList = (localData.trades && localData.trades.length > 0)
+      ? localData.trades
+      : (trades || []);
+
+    const stampedTrades = newTrades.map((t, idx) => ({
+      ...t,
+      id: t.id || `trade_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
+      userId: currentUser.id,
+      createdAt: t.createdAt || now,
+      updatedAt: now,
+    }));
+
+    const updatedTrades = [...stampedTrades, ...baseList];
+    saveUserTrades(currentUser.id, updatedTrades);
+    setTrades(updatedTrades);
+
+    pushDataToSyncServer(currentUser.id, {
+      trades: updatedTrades,
+      diary: localData.diary || diary,
+      capitalLogs: localData.capitalLogs || capitalLogs,
+      settings: localData.settings || settings,
+    });
+
+    showToast(`Successfully imported ${stampedTrades.length} trades from contract note!`);
+  }, [currentUser, trades, diary, capitalLogs, settings, showToast]);
 
   const handleDeleteTrade = useCallback((tradeOrId) => {
     if (!currentUser || !tradeOrId) return;
@@ -496,6 +530,7 @@ export default function App() {
               onDeleteTrade={handleRequestDeleteTrade}
               onDuplicateTrade={handleDuplicateTrade}
               onSaveTrade={handleSaveTrade}
+              onOpenContractNoteModal={() => setIsContractNoteModalOpen(true)}
             />
           )}
 
@@ -610,6 +645,14 @@ export default function App() {
       <InstallAppModal
         isOpen={isInstallModalOpen}
         onClose={() => setIsInstallModalOpen(false)}
+      />
+
+      {/* AI Broker Contract Note / Tradebook PDF Import Modal */}
+      <ContractNoteModal
+        isOpen={isContractNoteModalOpen}
+        onClose={() => setIsContractNoteModalOpen(false)}
+        onImportTrades={handleImportParsedTrades}
+        currentUser={currentUser}
       />
 
       {/* Custom In-App Confirmation Modal (Never blocked by browsers/PWAs) */}

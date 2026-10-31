@@ -17,6 +17,7 @@ import {
   BookOpen,
   Calendar,
   AlertTriangle,
+  FileText,
 } from 'lucide-react';
 import { RULE_VIOLATIONS } from '../utils/constants';
 import { formatINR } from '../utils/calculations';
@@ -30,6 +31,7 @@ export default function TradeLog({
   onDeleteTrade,
   onDuplicateTrade,
   onSaveTrade,
+  onOpenContractNoteModal,
 }) {
   // Trade Journal Entry Form State: Trade Type is Call or Put
   const [showQuickEntry, setShowQuickEntry] = useState(true);
@@ -352,7 +354,19 @@ export default function TradeLog({
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5 sm:space-x-3">
+          {onOpenContractNoteModal && (
+            <button
+              onClick={onOpenContractNoteModal}
+              title="Upload Broker PDF (Zerodha, Groww, Angel One, Dhan, Upstox) to auto-extract trades with AI"
+              className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-600/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 shadow-sm transition active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Import PDF (Contract Note)</span>
+            </button>
+          )}
+
           <button
             onClick={() => exportTradesCSV(filteredTrades)}
             className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-200 text-xs font-bold border border-neutral-800 transition"

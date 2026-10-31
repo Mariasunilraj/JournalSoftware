@@ -116,6 +116,73 @@ function localSyncPlugin() {
             return
           }
         }
+
+        // Local AI Contract Note Parse Endpoint
+        if (req.url && req.url.startsWith('/api/ai/parse-contract-note')) {
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204
+            res.end()
+            return
+          }
+
+          if (req.method === 'POST') {
+            let body = ''
+            req.on('data', (chunk) => { body += chunk })
+            req.on('end', async () => {
+              try {
+                const { fileBase64, mimeType = 'application/pdf', apiKey: userApiKey } = JSON.parse(body || '{}')
+                const apiKey = userApiKey || process.env.GEMINI_API_KEY
+                if (!apiKey) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Please provide a free Gemini API key to parse PDF contract notes.', needsApiKey: true }))
+                  return
+                }
+
+                const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '')
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
+
+                const systemPrompt = `You are an expert Indian Stock & Derivatives (NSE/BSE) contract note and tradebook parser.
+Analyze all executed trades in the document and match corresponding Buy and Sell orders for the same instrument into complete round-trip trades.
+Extract: date (YYYY-MM-DD), symbol (e.g. NIFTY 25000 CE), underlying, segment (Options/Futures/Equity), tradeType (Call/Put), optionType (CE/PE), strikePrice, expiryDate, entryTime, exitTime, quantity, entryPrice, exitPrice, grossPnL, charges, netPnL, strategy, notes.
+Return ONLY a valid JSON object:
+{ "broker": "Broker Name", "tradeDate": "YYYY-MM-DD", "totalCharges": 0, "trades": [...] }`
+
+                const gRes = await fetch(geminiUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: cleanBase64 } }, { text: systemPrompt }] }],
+                    generationConfig: { response_mime_type: 'application/json', temperature: 0.1 }
+                  })
+                })
+
+                if (!gRes.ok) {
+                  const errText = await gRes.text()
+                  res.statusCode = gRes.status
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: `Gemini API error: ${errText}` }))
+                  return
+                }
+
+                const data = await gRes.json()
+                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+                res.setHeader('Content-Type', 'application/json')
+                res.end(rawText)
+              } catch (err) {
+                res.statusCode = 500
+                res.setHeader('Content-Type', 'application/json')
+                res.end(JSON.stringify({ error: err.message }))
+              }
+            })
+            return
+          }
+        }
+
         next()
       })
     },
