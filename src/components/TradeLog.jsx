@@ -18,6 +18,7 @@ import {
   Calendar,
   AlertTriangle,
   FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { RULE_VIOLATIONS } from '../utils/constants';
 import { formatINR } from '../utils/calculations';
@@ -372,12 +373,11 @@ export default function TradeLog({
           {onOpenContractNoteModal && (
             <button
               onClick={onOpenContractNoteModal}
-              title="Upload Broker PDF (Zerodha, Groww, Angel One, Dhan, Upstox) to auto-extract trades with AI"
+              title="Upload Broker Excel (.xlsx, .xls), CSV, or PDF (Zerodha, Groww, Angel One, Dhan, Upstox)"
               className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-600/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 shadow-sm transition active:scale-95"
             >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <FileText className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Import PDF (Contract Note)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Import Excel (.xlsx)</span>
             </button>
           )}
 

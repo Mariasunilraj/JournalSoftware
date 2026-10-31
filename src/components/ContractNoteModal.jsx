@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
+  FileSpreadsheet,
   FileText,
   Upload,
   Sparkles,
@@ -15,8 +16,10 @@ import {
   TrendingDown,
   Shield,
   FileCheck,
+  Table,
 } from 'lucide-react';
 import { formatINR } from '../utils/calculations';
+import { readExcelFile, matchTradebookExecutions } from '../utils/excelParser';
 
 export default function ContractNoteModal({
   isOpen,
@@ -31,8 +34,10 @@ export default function ContractNoteModal({
   // States
   const [file, setFile] = useState(null);
   const [fileBase64, setFileBase64] = useState('');
+  const [fileCsvText, setFileCsvText] = useState('');
+  const [fileType, setFileType] = useState('excel'); // 'excel' | 'csv' | 'pdf'
   const [isDragging, setIsDragging] = useState(false);
-  const [status, setStatus] = useState('idle'); // 'idle' | 'parsing' | 'review'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'reading' | 'parsing' | 'review'
   const [error, setError] = useState(null);
 
   // Gemini API Key management
@@ -47,6 +52,7 @@ export default function ContractNoteModal({
     tradeDate: '',
     totalCharges: 0,
     trades: [],
+    sourceType: 'excel',
   });
 
   // Selected trade IDs for import
@@ -62,31 +68,78 @@ export default function ContractNoteModal({
     }
   };
 
-  // Convert File to Base64
-  const processFile = (selectedFile) => {
+  // Process File (Excel .xlsx / .xls, .csv, or .pdf)
+  const processFile = async (selectedFile) => {
     if (!selectedFile) return;
 
-    if (!selectedFile.name.toLowerCase().endsWith('.pdf') && selectedFile.type !== 'application/pdf') {
-      setError('Please upload a valid PDF contract note.');
+    const fileName = selectedFile.name.toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+    const isCsv = fileName.endsWith('.csv');
+    const isPdf = fileName.endsWith('.pdf');
+
+    if (!isExcel && !isCsv && !isPdf) {
+      setError('Please upload a valid Excel file (.xlsx, .xls), CSV (.csv), or broker PDF.');
       return;
     }
 
-    if (selectedFile.size > 15 * 1024 * 1024) {
-      setError('File size exceeds 15MB limit. Please upload a standard broker contract note PDF.');
+    if (selectedFile.size > 25 * 1024 * 1024) {
+      setError('File size exceeds 25MB limit. Please upload a standard broker export.');
       return;
     }
 
     setError(null);
     setFile(selectedFile);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFileBase64(reader.result);
-    };
-    reader.onerror = () => {
-      setError('Failed to read the PDF file. Please try again.');
-    };
-    reader.readAsDataURL(selectedFile);
+    if (isExcel || isCsv) {
+      setFileType(isExcel ? 'excel' : 'csv');
+      setStatus('reading');
+      try {
+        const { rows, csvText } = await readExcelFile(selectedFile);
+        setFileCsvText(csvText);
+
+        // Try direct client-side smart matching
+        const matched = matchTradebookExecutions(rows);
+        if (matched && matched.length > 0) {
+          // Detected broker
+          let detectedBroker = 'Broker Tradebook Excel';
+          const lowerName = fileName.toLowerCase();
+          if (lowerName.includes('zerodha') || lowerName.includes('tradebook')) detectedBroker = 'Zerodha Tradebook';
+          else if (lowerName.includes('groww')) detectedBroker = 'Groww Tradebook';
+          else if (lowerName.includes('angel')) detectedBroker = 'Angel One Tradebook';
+          else if (lowerName.includes('dhan')) detectedBroker = 'Dhan Tradebook';
+          else if (lowerName.includes('upstox')) detectedBroker = 'Upstox Tradebook';
+
+          const totalCharges = matched.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
+
+          setParsedData({
+            broker: detectedBroker,
+            tradeDate: matched[0]?.date || new Date().toISOString().slice(0, 10),
+            totalCharges: Number(totalCharges.toFixed(2)),
+            trades: matched,
+            sourceType: isExcel ? 'excel' : 'csv',
+          });
+          setSelectedIndices(matched.map((_, i) => i));
+          setStatus('review');
+        } else {
+          // If direct rule-matching didn't find pairs, give user option to parse with AI
+          setStatus('idle');
+          setError('Excel file loaded. Click "AI Enhanced Parse" to extract and match all trade executions.');
+        }
+      } catch (err) {
+        setStatus('idle');
+        setError(`Failed to read Excel file: ${err.message}`);
+      }
+    } else if (isPdf) {
+      setFileType('pdf');
+      const reader = new FileReader();
+      reader.onload = () => {
+        setFileBase64(reader.result);
+      };
+      reader.onerror = () => {
+        setError('Failed to read the PDF file.');
+      };
+      reader.readAsDataURL(selectedFile);
+    }
   };
 
   const handleDrop = (e) => {
@@ -97,25 +150,44 @@ export default function ContractNoteModal({
     }
   };
 
-  // Trigger AI Parsing via Serverless API
-  const handleParsePDF = async () => {
-    if (!fileBase64) {
-      setError('Please choose a contract note PDF to upload.');
-      return;
-    }
-
+  // Trigger AI Parsing via Serverless API for complex or PDF files
+  const handleParseWithAI = async () => {
     setStatus('parsing');
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/parse-contract-note', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let payload = {};
+
+      if (fileType === 'pdf') {
+        if (!fileBase64) {
+          setError('Please choose a file to parse.');
+          setStatus('idle');
+          return;
+        }
+        payload = {
           fileBase64,
           mimeType: 'application/pdf',
           apiKey: apiKey.trim() || undefined,
-        }),
+        };
+      } else {
+        // For Excel / CSV, send the extracted CSV tabular text encoded as base64
+        if (!fileCsvText) {
+          setError('Please select an Excel or CSV file.');
+          setStatus('idle');
+          return;
+        }
+        const b64Csv = btoa(unescape(encodeURIComponent(fileCsvText.slice(0, 50000))));
+        payload = {
+          fileBase64: `data:text/csv;base64,${b64Csv}`,
+          mimeType: 'text/csv',
+          apiKey: apiKey.trim() || undefined,
+        };
+      }
+
+      const res = await fetch('/api/ai/parse-contract-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -124,45 +196,82 @@ export default function ContractNoteModal({
         if (data.needsApiKey) {
           setShowKeyInput(true);
         }
-        throw new Error(data.error || 'Failed to parse contract note.');
+        throw new Error(data.error || 'Failed to parse file with AI.');
       }
 
-      const trades = Array.isArray(data.trades) ? data.trades : [];
-      if (trades.length === 0) {
-        throw new Error('No executed trades were detected in this document. Please ensure you uploaded a contract note or tradebook PDF.');
+      if (!data.trades || !Array.isArray(data.trades) || data.trades.length === 0) {
+        throw new Error('No completed trade executions were detected in this document.');
       }
 
-      // Map parsed trades with stable temporary IDs
-      const mappedTrades = trades.map((t, idx) => ({
-        ...t,
-        tempId: `parsed_${Date.now()}_${idx}`,
-        ruleFollowed: true,
-        ruleViolations: [],
-        entryEmotion: 'Disciplined',
-        exitEmotion: 'Disciplined',
-        status: 'Closed',
-      }));
+      // Standardize and stamp each trade
+      const formattedTrades = data.trades.map((t, idx) => {
+        const entry = Number(t.entryPrice) || 0;
+        const exit = Number(t.exitPrice) || 0;
+        const qty = Number(t.quantity) || 0;
+        const gross = Number(t.grossPnL) || (exit - entry) * qty;
+        const charges = Number(t.charges) || 0;
+        const net = Number(t.netPnL) || gross - charges;
+        const isCall = t.tradeType === 'Call' || t.optionType === 'CE' || t.symbol?.includes('CE');
 
-      setParsedData({
-        broker: data.broker || 'Contract Note',
-        tradeDate: data.tradeDate || new Date().toISOString().slice(0, 10),
-        totalCharges: Number(data.totalCharges) || 0,
-        trades: mappedTrades,
+        return {
+          id: `TRD-AI-${Date.now().toString().slice(-6)}-${idx}`,
+          date: t.date || data.tradeDate || new Date().toISOString().slice(0, 10),
+          entryTime: t.entryTime || '09:30',
+          exitTime: t.exitTime || '10:15',
+          symbol: t.symbol || 'NIFTY OPTION',
+          underlying: t.underlying || 'NIFTY',
+          exchange: 'NSE',
+          segment: t.segment || 'Options',
+          direction: t.direction || 'Long',
+          optionType: isCall ? 'CE' : 'PE',
+          optionAction: 'Buy',
+          tradeType: isCall ? 'Call' : 'Put',
+          strikePrice: Number(t.strikePrice) || 25000,
+          expiryDate: t.expiryDate || t.date || new Date().toISOString().slice(0, 10),
+          lotSize: (t.underlying === 'BANKNIFTY' ? 15 : 25),
+          lots: Math.max(1, Math.round(qty / (t.underlying === 'BANKNIFTY' ? 15 : 25))),
+          quantity: qty,
+          entryPrice: entry,
+          exitPrice: exit,
+          grossPnL: Number(gross.toFixed(2)),
+          charges: Number(charges.toFixed(2)),
+          netPnL: Number(net.toFixed(2)),
+          marginUsed: entry * qty,
+          stopLoss: 0,
+          target: 0,
+          strategy: t.strategy || 'Intraday Options',
+          ruleFollowed: true,
+          ruleViolations: [],
+          entryEmotion: 'Disciplined',
+          exitEmotion: 'Disciplined',
+          entryReason: 'AI Extracted Execution',
+          exitReason: '',
+          notes: t.notes || `AI Parsed: Gross ₹${gross.toFixed(2)} - Charges ₹${charges.toFixed(2)} = Net ₹${net.toFixed(2)}.`,
+          status: 'Closed',
+          screenshots: [],
+        };
       });
 
-      // Select all trades by default
-      setSelectedIndices(mappedTrades.map((_, i) => i));
+      setParsedData({
+        broker: data.broker || 'Broker Export',
+        tradeDate: data.tradeDate || formattedTrades[0]?.date || new Date().toISOString().slice(0, 10),
+        totalCharges: Number(data.totalCharges) || formattedTrades.reduce((acc, t) => acc + t.charges, 0),
+        trades: formattedTrades,
+        sourceType: fileType,
+      });
+
+      setSelectedIndices(formattedTrades.map((_, i) => i));
       setStatus('review');
     } catch (err) {
-      setError(err.message || 'Error communicating with AI parser.');
+      console.error('AI Parse error:', err);
+      setError(err.message);
       setStatus('idle');
     }
   };
 
-  // Toggle selection
-  const toggleSelect = (index) => {
+  const toggleSelect = (idx) => {
     setSelectedIndices((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
     );
   };
 
@@ -174,128 +283,92 @@ export default function ContractNoteModal({
     }
   };
 
-  // Confirm Import
+  // Perform Final Import
   const handleConfirmImport = () => {
-    const tradesToImport = parsedData.trades.filter((_, idx) =>
-      selectedIndices.includes(idx)
-    );
-
-    if (tradesToImport.length === 0) {
+    const selectedTrades = parsedData.trades.filter((_, idx) => selectedIndices.includes(idx));
+    if (selectedTrades.length === 0) {
       setError('Please select at least one trade to import.');
       return;
     }
 
-    // Format trades for the Delta Journal schema
-    const formatted = tradesToImport.map((t, idx) => {
-      const now = Date.now() + idx;
-      const isCall = t.tradeType === 'Call' || t.optionType === 'CE' || t.symbol?.includes('CE');
-      const optionType = isCall ? 'CE' : t.optionType === 'PE' || t.symbol?.includes('PE') ? 'PE' : null;
-      const segment = t.segment || (optionType ? 'Options' : 'Equity');
-      const gross = Number(t.grossPnL) || (Number(t.exitPrice) - Number(t.entryPrice)) * Number(t.quantity);
-      const charges = Number(t.charges) || 0;
-      const net = Number(t.netPnL) || (gross - charges);
-
-      return {
-        id: `TRD-${now.toString().slice(-6)}`,
-        date: t.date || parsedData.tradeDate || new Date().toISOString().slice(0, 10),
-        entryTime: t.entryTime || '09:30',
-        exitTime: t.exitTime || '10:15',
-        symbol: t.symbol || 'NIFTY',
-        underlying: t.underlying || 'NIFTY',
-        exchange: 'NSE',
-        segment,
-        direction: 'Long',
-        tradeType: isCall ? 'Call' : 'Put',
-        optionType,
-        optionAction: 'Buy',
-        strikePrice: Number(t.strikePrice) || 0,
-        expiryDate: t.expiryDate || t.date || new Date().toISOString().slice(0, 10),
-        lotSize: 25,
-        lots: Math.max(1, Math.round((Number(t.quantity) || 25) / 25)),
-        quantity: Number(t.quantity) || 25,
-        entryPrice: Number(t.entryPrice) || 0,
-        exitPrice: Number(t.exitPrice) || 0,
-        marginUsed: Number(t.entryPrice || 0) * Number(t.quantity || 0),
-        grossPnL: Number(gross.toFixed(2)),
-        charges: Number(charges.toFixed(2)),
-        netPnL: Number(net.toFixed(2)),
-        status: 'Closed',
-        ruleFollowed: true,
-        ruleViolations: [],
-        entryEmotion: 'Disciplined',
-        exitEmotion: 'Disciplined',
-        strategy: t.strategy || 'Contract Note Import',
-        notes: t.notes || `Imported from ${parsedData.broker} Contract Note (${parsedData.tradeDate})`,
-        userId: currentUser?.id,
-        createdAt: now,
-        updatedAt: now,
-      };
-    });
-
-    onImportTrades(formatted);
+    onImportTrades(selectedTrades);
+    handleReset();
     onClose();
   };
 
-  // Financial aggregates for reviewed trades
-  const reviewAggregates = parsedData.trades.reduce(
-    (acc, t, idx) => {
-      if (selectedIndices.includes(idx)) {
-        acc.gross += Number(t.grossPnL) || 0;
-        acc.charges += Number(t.charges) || 0;
-        acc.net += Number(t.netPnL) || 0;
-        acc.count += 1;
-      }
-      return acc;
-    },
-    { gross: 0, charges: 0, net: 0, count: 0 }
-  );
+  const handleReset = () => {
+    setFile(null);
+    setFileBase64('');
+    setFileCsvText('');
+    setStatus('idle');
+    setError(null);
+    setParsedData({ broker: '', tradeDate: '', totalCharges: 0, trades: [], sourceType: 'excel' });
+    setSelectedIndices([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Review Aggregates
+  const reviewAggregates = React.useMemo(() => {
+    const sel = parsedData.trades.filter((_, idx) => selectedIndices.includes(idx));
+    const gross = sel.reduce((acc, t) => acc + (Number(t.grossPnL) || 0), 0);
+    const charges = sel.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
+    const net = sel.reduce((acc, t) => acc + (Number(t.netPnL) || 0), 0);
+    return {
+      count: sel.length,
+      gross: Number(gross.toFixed(2)),
+      charges: Number(charges.toFixed(2)),
+      net: Number(net.toFixed(2)),
+    };
+  }, [parsedData.trades, selectedIndices]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="relative w-full max-w-3xl bg-[#090909] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-[#090909] border border-neutral-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-neutral-800 flex items-center justify-between bg-black">
+        <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-[0_0_12px_rgba(0,230,118,0.2)]">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-black text-white tracking-tight flex items-center gap-2">
-                AI Contract Note Import
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  PDF OCR
+              <div className="flex items-center space-x-2">
+                <h2 className="text-base sm:text-lg font-black text-white">
+                  Import Broker Excel Tradebook
+                </h2>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  EXCEL & CSV READY
                 </span>
-              </h2>
+              </div>
               <p className="text-xs text-neutral-400">
-                Upload broker contract note or tradebook PDF to auto-log your executions
+                Upload broker Excel (.xlsx, .xls), CSV, or PDF from Zerodha, Groww, Angel One, Dhan, or Upstox
               </p>
             </div>
           </div>
+
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+            onClick={() => {
+              handleReset();
+              onClose();
+            }}
+            className="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-900 transition"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm text-white touch-scroll">
-          {/* Error Banner */}
+        {/* Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
           {error && (
-            <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-900/40 text-rose-300 flex items-start space-x-2 text-xs">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-              <div className="flex-1">
-                <span className="font-bold">Error: </span>
-                {error}
-              </div>
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span className="flex-1 font-medium">{error}</span>
             </div>
           )}
 
           {/* STEP 1: UPLOAD SCREEN */}
           {status === 'idle' && (
             <div className="space-y-4">
-              {/* Dropzone */}
+              {/* Drag & Drop Zone */}
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -304,55 +377,103 @@ export default function ContractNoteModal({
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-3 ${
+                className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-3 ${
                   isDragging
-                    ? 'border-emerald-500 bg-emerald-950/10'
-                    : file
-                    ? 'border-emerald-500/40 bg-neutral-900/40'
-                    : 'border-neutral-800 hover:border-neutral-700 bg-black/40 hover:bg-black/60'
+                    ? 'border-emerald-500 bg-emerald-500/5'
+                    : 'border-neutral-800 hover:border-neutral-700 bg-black/40'
                 }`}
               >
+                <div className="w-14 h-14 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-emerald-400 shadow-inner">
+                  <FileSpreadsheet className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-white">
+                    {file ? file.name : 'Click to select or drag & drop your Excel file here'}
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    Supports <strong className="text-emerald-400">.xlsx</strong>, <strong className="text-emerald-400">.xls</strong>, <strong className="text-emerald-400">.csv</strong>, or broker <strong className="text-neutral-300">.pdf</strong>
+                  </p>
+                </div>
+
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={(e) => e.target.files && processFile(e.target.files[0])}
+                  accept=".xlsx,.xls,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/pdf"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      processFile(e.target.files[0]);
+                    }
+                  }}
                   className="hidden"
                 />
 
-                <div className="w-14 h-14 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-emerald-400 shadow-inner">
-                  {file ? <FileCheck className="w-7 h-7" /> : <Upload className="w-7 h-7" />}
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    Excel (.xlsx, .xls)
+                  </span>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                    CSV (.csv)
+                  </span>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
+                    PDF (.pdf)
+                  </span>
                 </div>
-
-                {file ? (
-                  <div>
-                    <span className="text-sm font-bold text-white block">{file.name}</span>
-                    <span className="text-xs text-emerald-400 font-mono mt-0.5 block">
-                      {(file.size / 1024).toFixed(1)} KB • Ready to parse
-                    </span>
-                  </div>
-                ) : (
-                  <div>
-                    <span className="text-sm font-bold text-white block">
-                      Drop your Contract Note PDF here, or <span className="text-emerald-400 underline">browse</span>
-                    </span>
-                    <span className="text-xs text-neutral-500 mt-1 block">
-                      Supports Zerodha, Groww, Angel One, Dhan, Upstox, Kotak Neo & more
-                    </span>
-                  </div>
-                )}
               </div>
 
-              {/* Supported Brokers Strip */}
-              <div className="p-3.5 rounded-xl bg-neutral-900/40 border border-neutral-800/80 space-y-2">
+              {/* Action Buttons if file selected */}
+              {file && (
+                <div className="p-3.5 rounded-xl bg-black border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-white truncate">{file.name}</p>
+                      <p className="text-[11px] text-neutral-400">
+                        {(file.size / 1024).toFixed(1)} KB • Ready for extraction
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white text-xs font-semibold transition"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleParseWithAI}
+                      className="flex items-center space-x-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-black shadow-lg shadow-emerald-500/20 transition"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Extract & Match Trades</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Supported Brokers List */}
+              <div className="p-3.5 rounded-xl bg-black border border-neutral-800/80 space-y-2">
                 <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
-                  Supported Broker Documents
+                  Tested with major Indian brokers
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {['Zerodha Kite', 'Groww', 'Angel One', 'Dhan', 'Upstox', 'Kotak Neo', 'Shoonya', 'Fyers', 'ICICI Direct'].map((b) => (
+                  {[
+                    'Zerodha Console Tradebook',
+                    'Groww P&L Excel',
+                    'Angel One Tradebook',
+                    'Dhan Past Trades',
+                    'Upstox Tradebook',
+                    'Kotak Neo',
+                    'Shoonya',
+                    'Fyers',
+                    'ICICI Direct',
+                  ].map((b) => (
                     <span
                       key={b}
-                      className="px-2 py-0.5 rounded-lg bg-black border border-neutral-800 text-[11px] text-neutral-300 font-medium"
+                      className="px-2 py-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 font-medium"
                     >
                       {b}
                     </span>
@@ -360,26 +481,26 @@ export default function ContractNoteModal({
                 </div>
               </div>
 
-              {/* Gemini API Key Collapsible / Config */}
-              <div className="p-3.5 rounded-xl bg-neutral-900/30 border border-neutral-800/80 space-y-2 text-xs">
+              {/* Gemini API Key Collapsible */}
+              <div className="p-3 rounded-xl bg-neutral-900/30 border border-neutral-800/80 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-neutral-300 flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-emerald-400" />
-                    Google Gemini AI Key
+                    AI Engine Key (Optional)
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowKeyInput(!showKeyInput)}
                     className="text-[11px] text-emerald-400 hover:text-white font-semibold"
                   >
-                    {showKeyInput ? 'Hide' : apiKey ? 'Edit Key' : 'Add Key (Optional)'}
+                    {showKeyInput ? 'Hide' : apiKey ? 'Edit Key' : 'Add Key'}
                   </button>
                 </div>
 
                 {showKeyInput && (
                   <div className="space-y-2 pt-1 animate-in fade-in">
                     <p className="text-[11px] text-neutral-400">
-                      You can paste your free Google Gemini API key below, or set <code className="text-emerald-400">GEMINI_API_KEY</code> in your Vercel project settings:
+                      Standard Excel matching works 100% offline. For complex layouts, Gemini AI is used:
                     </p>
                     <div className="flex items-center space-x-2">
                       <input
@@ -395,7 +516,7 @@ export default function ContractNoteModal({
                         rel="noreferrer"
                         className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-bold text-emerald-400 transition"
                       >
-                        <span>Get Free Key</span>
+                        <span>Free Key</span>
                         <ExternalLink className="w-3 h-3" />
                       </a>
                     </div>
@@ -405,8 +526,8 @@ export default function ContractNoteModal({
             </div>
           )}
 
-          {/* STEP 2: PARSING LOADER */}
-          {status === 'parsing' && (
+          {/* STEP 2: READING / PARSING LOADER */}
+          {(status === 'reading' || status === 'parsing') && (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
               <div className="relative">
                 <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 animate-pulse">
@@ -414,9 +535,11 @@ export default function ContractNoteModal({
                 </div>
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-black text-white">AI is Analyzing Your Contract Note...</h3>
+                <h3 className="text-base font-black text-white">
+                  {status === 'reading' ? 'Reading Excel Workbook...' : 'Matching & Calculating Taxes...'}
+                </h3>
                 <p className="text-xs text-neutral-400 max-w-sm">
-                  Matching Buy and Sell executions, computing round-trip P&L, and calculating STT and statutory charges.
+                  Applying official Government STT (0.15%), Stamp Duty, NSE Options fees, and computing true Net P&L.
                 </p>
               </div>
             </div>
@@ -433,9 +556,12 @@ export default function ContractNoteModal({
                     <span className="text-[10px] text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded font-mono">
                       {parsedData.tradeDate}
                     </span>
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase">
+                      {parsedData.sourceType}
+                    </span>
                   </div>
                   <p className="text-xs text-neutral-400">
-                    Detected {parsedData.trades.length} round-trip trade executions
+                    Extracted {parsedData.trades.length} round-trip trade executions
                   </p>
                 </div>
 
@@ -448,7 +574,7 @@ export default function ContractNoteModal({
                   </div>
                   <div className="h-6 w-px bg-neutral-800" />
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-neutral-500 block">Charges</span>
+                    <span className="text-[10px] uppercase font-bold text-neutral-500 block">Taxes & Charges</span>
                     <span className="text-base font-bold text-amber-400">
                       {formatINR(reviewAggregates.charges)}
                     </span>
@@ -479,7 +605,7 @@ export default function ContractNoteModal({
 
                     return (
                       <div
-                        key={t.tempId || idx}
+                        key={t.id || idx}
                         onClick={() => toggleSelect(idx)}
                         className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition ${
                           isSelected ? 'bg-neutral-900/30 hover:bg-neutral-900/50' : 'opacity-40 hover:opacity-70 bg-black'
@@ -519,10 +645,10 @@ export default function ContractNoteModal({
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className={`text-sm sm:text-base font-black ${isProfit ? 'text-emerald-400' : 'text-rose-500'}`}>
+                          <span className={`text-sm font-black ${isProfit ? 'text-emerald-400' : 'text-rose-500'}`}>
                             {formatINR(t.netPnL)}
-                          </div>
-                          <span className="text-[10px] text-neutral-500">
+                          </span>
+                          <span className="text-[10px] text-neutral-500 block">
                             Gross: {formatINR(t.grossPnL)}
                           </span>
                         </div>
@@ -531,50 +657,32 @@ export default function ContractNoteModal({
                   })}
                 </div>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-neutral-800 bg-black flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 transition"
-          >
-            Cancel
-          </button>
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-bold border border-neutral-800 transition"
+                >
+                  Upload Another File
+                </button>
 
-          {status === 'idle' && (
-            <button
-              type="button"
-              onClick={handleParsePDF}
-              disabled={!file}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_14px_rgba(0,230,118,0.3)]"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Parse Contract Note</span>
-            </button>
-          )}
-
-          {status === 'review' && (
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => setStatus('idle')}
-                className="px-3 py-2 rounded-xl text-xs font-semibold text-neutral-300 hover:text-white bg-neutral-900 border border-neutral-800 transition"
-              >
-                Upload Another
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={selectedIndices.length === 0}
-                className="flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition active:scale-95 disabled:opacity-50 shadow-[0_0_14px_rgba(0,230,118,0.3)]"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Import {selectedIndices.length} Trades to Journal</span>
-              </button>
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs text-neutral-400">
+                    Ready to log <strong className="text-white">{reviewAggregates.count}</strong> trades
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleConfirmImport}
+                    disabled={reviewAggregates.count === 0}
+                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition disabled:opacity-40"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Import Selected Trades</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
