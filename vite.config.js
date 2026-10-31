@@ -149,6 +149,7 @@ function localSyncPlugin() {
                 const systemPrompt = `You are an expert Indian Stock & Derivatives (NSE/BSE) contract note and tradebook parser.
 Analyze all executed trades in the document and match corresponding Buy and Sell orders for the same instrument into complete round-trip trades.
 Extract: date (YYYY-MM-DD), symbol (e.g. NIFTY 25000 CE), underlying, segment (Options/Futures/Equity), tradeType (Call/Put), optionType (CE/PE), strikePrice, expiryDate, entryTime, exitTime, quantity, entryPrice, exitPrice, grossPnL, charges, netPnL, strategy, notes.
+Statutory charges for Indian Options (FY 2026-27): STT = 0.15% on sell premium turnover, Stamp duty = 0.003% on buy premium turnover, NSE options turnover = 0.03553%, SEBI fee = 0.0001% (₹10/Cr), Brokerage = broker-specific (typically ₹20/order), GST = 18% on (Brokerage + NSE + SEBI).
 Return ONLY a valid JSON object:
 { "broker": "Broker Name", "tradeDate": "YYYY-MM-DD", "totalCharges": 0, "trades": [...] }`
 

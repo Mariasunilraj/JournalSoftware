@@ -127,9 +127,23 @@ export default function TradeLog({
     const entry = parseFloat(quickForm.entryPrice) || 0;
     const exit = parseFloat(quickForm.exitPrice) || 0;
     const qty = parseFloat(quickForm.quantity) || 0;
-    const charges = parseFloat(quickForm.charges) || 0;
-    const gross = parseFloat(quickForm.grossProfit) || ((exit - entry) * qty);
-    const net = parseFloat(quickForm.netProfit) || (gross - charges);
+    let charges = parseFloat(quickForm.charges) || 0;
+
+    // Auto-calculate exact government statutory charges if 0 or unedited
+    if ((charges === 0 || !userEditedCharges) && entry > 0 && exit > 0 && qty > 0) {
+      const breakdown = calculateIndianCharges({
+        segment: 'Options',
+        direction: 'Long',
+        optionAction: 'Buy',
+        entryPrice: entry,
+        exitPrice: exit,
+        quantity: qty,
+      });
+      charges = breakdown.totalCharges;
+    }
+
+    const gross = parseFloat(quickForm.grossProfit) || Number(((exit - entry) * qty).toFixed(2));
+    const net = Number((gross - charges).toFixed(2));
 
     const isCall = quickForm.tradeType === 'Call';
     const isMistake = quickForm.mistake && !quickForm.mistake.includes('None');

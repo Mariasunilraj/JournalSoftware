@@ -581,23 +581,23 @@ export default function TradeModal({ isOpen, onClose, onSave, onDelete, initialT
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.brokerage}</div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                      <span className="text-slate-400 text-[11px]">STT (Govt Tax):</span>
+                      <span className="text-slate-400 text-[11px]">STT (0.15% Sell Govt Tax):</span>
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.stt}</div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                      <span className="text-slate-400 text-[11px]">Exchange Turnover:</span>
+                      <span className="text-slate-400 text-[11px]">NSE Options (0.03553%):</span>
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.exchangeTurnover}</div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                      <span className="text-slate-400 text-[11px]">GST (18%):</span>
+                      <span className="text-slate-400 text-[11px]">GST (18% on Services):</span>
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.gst}</div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                      <span className="text-slate-400 text-[11px]">Stamp Duty:</span>
+                      <span className="text-slate-400 text-[11px]">Stamp Duty (0.003% Buy):</span>
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.stampDuty}</div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/60">
-                      <span className="text-slate-400 text-[11px]">SEBI Turnover Fee:</span>
+                      <span className="text-slate-400 text-[11px]">SEBI Fee (₹10/Cr):</span>
                       <div className="font-bold text-slate-200">₹{chargeBreakdown.sebiCharges}</div>
                     </div>
                   </div>

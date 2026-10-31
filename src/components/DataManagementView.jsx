@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Download,
   Upload,
@@ -11,6 +11,11 @@ import {
   Wallet,
   CheckCircle2,
   Edit2,
+  Wrench,
+  Sparkles,
+  ShieldCheck,
+  Scale,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   exportBackupJSON,
@@ -20,6 +25,7 @@ import {
 import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from '../utils/sampleData';
 import { DEFAULT_RISK_SETTINGS } from '../utils/constants';
 import { formatINR } from '../utils/calculations';
+import { calculateIndianCharges } from '../utils/chargesCalculator';
 
 export default function DataManagementView({
   trades,
@@ -135,6 +141,76 @@ export default function DataManagementView({
         notify('All local journal records have been cleared.');
       }
     }
+  };
+
+  // 6. Indian F&O Government Tax & Charges Repair
+  const [isRepairingTaxes, setIsRepairingTaxes] = useState(false);
+
+  const zeroChargeTradesCount = useMemo(() => {
+    return (trades || []).filter((t) => !t.charges || Number(t.charges) === 0).length;
+  }, [trades]);
+
+  const handleRepairAllTaxes = () => {
+    if (!trades || trades.length === 0) {
+      alert('No trades found to repair.');
+      return;
+    }
+
+    if (
+      !confirm(
+        `Repair and recalculate statutory taxes for all ${trades.length} trades according to official Government F&O circulars (STT 0.15% on Sell, Stamp Duty 0.003% on Buy, NSE 0.03553%, SEBI 0.0001%, Brokerage ₹20/order, GST 18%)?`
+      )
+    ) {
+      return;
+    }
+
+    setIsRepairingTaxes(true);
+    let count = 0;
+    let oldChargesSum = 0;
+    let newChargesSum = 0;
+
+    const repairedTrades = trades.map((t) => {
+      const entry = Number(t.entryPrice) || 0;
+      const exit = Number(t.exitPrice) || 0;
+      const qty = Number(t.quantity) || 0;
+      const dir = t.direction || (t.tradeType === 'Put' ? 'Long' : 'Long');
+
+      const breakdown = calculateIndianCharges({
+        segment: t.segment || 'Options',
+        direction: dir,
+        entryPrice: entry,
+        exitPrice: exit,
+        quantity: qty,
+        brokeragePerOrder: Number(settings?.defaultBrokeragePerOrder) || 20,
+      });
+
+      const gross = dir === 'Short' ? (entry - exit) * qty : (exit - entry) * qty;
+      const grossPnL = Number(gross.toFixed(2));
+      const netPnL = Number((grossPnL - breakdown.totalCharges).toFixed(2));
+
+      oldChargesSum += Number(t.charges) || 0;
+      newChargesSum += breakdown.totalCharges;
+      count++;
+
+      return {
+        ...t,
+        charges: breakdown.totalCharges,
+        grossPnL,
+        netPnL,
+        notes: t.notes ? t.notes.replace(/Charges ₹[0-9.]+/g, `Charges ₹${breakdown.totalCharges}`) : t.notes,
+        updatedAt: Date.now(),
+      };
+    });
+
+    onUpdateAllData({
+      trades: repairedTrades,
+      diary,
+      capitalLogs,
+      settings,
+    });
+
+    setIsRepairingTaxes(false);
+    notify(`Repaired taxes for all ${count} trades! Total charges updated to ₹${newChargesSum.toFixed(2)}.`);
   };
 
   // Capital Math - Starting capital defaults to 0 when erased
@@ -378,6 +454,91 @@ export default function DataManagementView({
               <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
             </label>
           </div>
+        </div>
+      </div>
+
+      {/* 3. Government F&O Options Tax & Charges Engine */}
+      <div className="p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <Scale className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-base font-bold text-white">Government F&O Options Tax & Charges Engine</h3>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  FY 2026-27 GUIDE
+                </span>
+              </div>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Statutory levies for Indian NSE options: STT 0.15% (Sell), Stamp Duty 0.003% (Buy), NSE 0.03553%, SEBI ₹10/Cr, Brokerage ₹20/order, GST 18%.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {zeroChargeTradesCount > 0 ? (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[11px] font-bold">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{zeroChargeTradesCount} trades with ₹0 charges</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>All {trades.length} trades verified</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Rates Breakdown Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">STT (Sell Side)</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">0.15%</span>
+            <span className="text-[10px] text-neutral-400">On option sell premium</span>
+          </div>
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">Stamp Duty (Buy)</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">0.003%</span>
+            <span className="text-[10px] text-neutral-400">On option buy premium</span>
+          </div>
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">NSE Transaction</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">0.03553%</span>
+            <span className="text-[10px] text-neutral-400">On total premium turnover</span>
+          </div>
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">SEBI Turnover</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">0.0001%</span>
+            <span className="text-[10px] text-neutral-400">₹10 per crore turnover</span>
+          </div>
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">Brokerage</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">₹20 / order</span>
+            <span className="text-[10px] text-neutral-400">₹40 round-trip executions</span>
+          </div>
+          <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold block">GST on Services</span>
+            <span className="text-white font-bold text-xs mt-0.5 block">18%</span>
+            <span className="text-[10px] text-neutral-400">Brokerage + NSE + SEBI</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <p className="text-[11px] text-neutral-400">
+            Clicking repair will recalculate exact statutory charges and true Net P&L for every trade in your journal.
+          </p>
+
+          <button
+            onClick={handleRepairAllTaxes}
+            disabled={isRepairingTaxes || trades.length === 0}
+            className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition disabled:opacity-50"
+          >
+            <Wrench className="w-4 h-4" />
+            <span>{isRepairingTaxes ? 'Recalculating...' : 'Recalculate & Repair All Trade Taxes'}</span>
+          </button>
         </div>
       </div>
 

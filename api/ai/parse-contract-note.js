@@ -47,7 +47,7 @@ For each trade, extract and compute:
 12. "entryPrice": Buy average price per unit (number).
 13. "exitPrice": Sell average price per unit (number).
 14. "grossPnL": (exitPrice - entryPrice) * quantity (number rounded to 2 decimals).
-15. "charges": Proportionate statutory charges + brokerage for this trade (STT, Exchange turnover, GST, SEBI fee, Stamp duty, Brokerage). If document lists total charges, allocate proportionately.
+15. "charges": Proportionate statutory charges + brokerage for this trade. Apply official Government circular rates (FY 2026-27): STT = 0.15% on sell premium turnover, Stamp duty = 0.003% on buy premium turnover, NSE options turnover = 0.03553%, SEBI fee = 0.0001% (₹10/Cr), Brokerage = broker-specific (typically ₹20/order), GST = 18% on (Brokerage + NSE + SEBI).
 16. "netPnL": grossPnL - charges (number rounded to 2 decimals).
 17. "strategy": Strategy detected, e.g. "Intraday Options", "Momentum", "Breakout", "Expiry Scalp".
 18. "notes": Brief summary, e.g. "Contract note execution for NIFTY 25000 CE".
