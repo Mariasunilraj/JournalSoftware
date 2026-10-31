@@ -40,26 +40,30 @@ export function parseGridOrCsv(rawGrid, text = '') {
   const lowerText = text.toLowerCase();
   if (lowerText.includes('groww') || lowerText.includes('realised trades (trade level)')) {
     detectedBroker = 'Groww F&O P&L';
+  } else if (lowerText.includes('angel') || lowerText.includes('tradebook and charges') || lowerText.includes('charges summary')) {
+    detectedBroker = 'Angel One Tradebook & Charges';
   } else if (lowerText.includes('zerodha') || lowerText.includes('console')) {
     detectedBroker = 'Zerodha Console Tradebook';
-  } else if (lowerText.includes('angel')) {
-    detectedBroker = 'Angel One Tradebook';
   } else if (lowerText.includes('dhan')) {
     detectedBroker = 'Dhan Tradebook';
   } else if (lowerText.includes('upstox')) {
     detectedBroker = 'Upstox Tradebook';
   }
 
-  // Detect total charges from summary blocks if present (e.g. Groww summary table)
+  // Detect total charges from summary blocks if present (e.g. Groww summary table, Angel One summary)
   if (rawGrid && rawGrid.length > 0) {
     for (let i = 0; i < Math.min(rawGrid.length, 35); i++) {
       const row = rawGrid[i] || [];
       const cell0 = String(row[0] || '').trim().toLowerCase();
-      if (cell0 === 'charges' || cell0.includes('charges')) {
+      if (cell0 === 'charges' || cell0.includes('charges') || cell0 === 'total charges' || cell0 === 'total trade charges') {
+        if (cell0 === 'total charges' || cell0 === 'total trade charges') {
+          const val = parseFloat(row[1]);
+          if (val > 0) detectedCharges = val;
+        }
         for (let j = i + 1; j < Math.min(rawGrid.length, i + 15); j++) {
           const subRow = rawGrid[j] || [];
           const subCell0 = String(subRow[0] || '').trim().toLowerCase();
-          if (subCell0 === 'total') {
+          if (subCell0 === 'total' || subCell0 === 'total charges' || subCell0 === 'total trade charges') {
             const val = parseFloat(subRow[1]);
             if (val > 0) detectedCharges = val;
             break;
@@ -85,9 +89,9 @@ export function parseGridOrCsv(rawGrid, text = '') {
 
       // Check if this row is a trade table header
       const matchCount = [
-        'symbol', 'tradingsymbol', 'scripname', 'scrip', 'instrument', 'contract', 'particulars',
+        'symbol', 'tradingsymbol', 'scripcontract', 'scripname', 'scrip', 'instrument', 'contract', 'particulars',
         'tradedate', 'date', 'orderdate', 'buyprice', 'buyavg', 'buyrate', 'sellprice', 'sellavg',
-        'sellrate', 'realizedpnl', 'realisedpnl', 'quantity', 'qty', 'tradedqty'
+        'sellrate', 'realizedpnl', 'realisedpnl', 'quantity', 'qty', 'tradedqty', 'buysell'
       ].filter((k) => lowerStrings.some((cell) => cell.includes(k))).length;
 
       if (matchCount >= 2) {
@@ -433,24 +437,65 @@ function parsePreAggregatedRows(rows, options = {}) {
 
 function matchSeparateLegs(rows) {
   const groups = {};
+  const accumulatedCharges = {};
 
   rows.forEach((r) => {
     const rawDate = r.tradedate || r.date || r.orderdate || r.orderexecutiontime || '';
     const date = formatDate(rawDate);
-    const symbol = (r.symbol || r.tradingsymbol || r.scripname || r.instrument || '').toUpperCase().trim();
-    if (!symbol) return;
+    const rawSymbol = (
+      r.scripcontract ||
+      r.scripname ||
+      r.symbol ||
+      r.tradingsymbol ||
+      r.scrip ||
+      r.instrument ||
+      r.contract ||
+      ''
+    ).trim();
+
+    if (!rawSymbol) return;
+
+    // Clean broker-specific prefixes/suffixes (e.g. Angel One: "OPTIDX NIFTY Aug 18 2026 24650.00 CE (BT)")
+    const symbol = rawSymbol
+      .replace(/\(BT\)/gi, '')
+      .replace(/OPTIDX\s+/gi, '')
+      .replace(/BSXOPT\s+/gi, '')
+      .replace(/OPTFUT\s+/gi, '')
+      .trim()
+      .toUpperCase();
 
     const key = `${date}_${symbol}`;
-    if (!groups[key]) groups[key] = { date, symbol, buys: [], sells: [] };
+    if (!groups[key]) groups[key] = { date, symbol, rawSymbol, buys: [], sells: [] };
 
-    const typeStr = (r.tradetype || r.type || r.side || r.transactiontype || '').toLowerCase();
-    const price = parseFloat(r.price || r.tradeprice || r.avgprice || r.rate || 0);
+    const typeStr = (r.buysell || r.tradetype || r.type || r.side || r.transactiontype || '').toLowerCase();
     const qty = parseInt(r.quantity || r.qty || r.tradedqty || 0, 10);
+    const buyPrice = parseFloat(r.buyprice || 0);
+    const sellPrice = parseFloat(r.sellprice || 0);
+
+    let price = parseFloat(r.price || r.tradeprice || r.avgprice || r.rate || 0);
+    if (price <= 0) {
+      if (typeStr.includes('buy') && buyPrice > 0) price = buyPrice;
+      else if (typeStr.includes('sell') && sellPrice > 0) price = sellPrice;
+      else price = buyPrice || sellPrice || 0;
+    }
+
+    // Accumulate row-level charges if present in the broker export (e.g. Angel One order charges)
+    const rowCharges =
+      (parseFloat(r.brokerage || 0) || 0) +
+      (parseFloat(r.gst || 0) || 0) +
+      (parseFloat(r.stt || 0) || 0) +
+      (parseFloat(r.sebitax || 0) || 0) +
+      (parseFloat(r.exchangeturnovercharges || 0) || 0) +
+      (parseFloat(r.stampduty || 0) || 0);
+
+    if (rowCharges > 0) {
+      accumulatedCharges[key] = (accumulatedCharges[key] || 0) + rowCharges;
+    }
 
     if (price > 0 && qty > 0) {
-      if (typeStr.includes('buy') || typeStr === 'b') {
+      if (typeStr.includes('buy') || (buyPrice > 0 && sellPrice === 0)) {
         groups[key].buys.push({ price, qty, time: r.orderexecutiontime || r.time || '09:30' });
-      } else if (typeStr.includes('sell') || typeStr === 's') {
+      } else if (typeStr.includes('sell') || (sellPrice > 0 && buyPrice === 0)) {
         groups[key].sells.push({ price, qty, time: r.orderexecutiontime || r.time || '10:15' });
       }
     }
@@ -475,17 +520,19 @@ function matchSeparateLegs(rows) {
       const isCall = symbol.includes('CE') || symbol.includes('CALL');
       const isPut = symbol.includes('PE') || symbol.includes('PUT');
       const tradeType = isCall ? 'Call' : isPut ? 'Put' : 'Call';
-      const underlying = symbol.includes('BANKNIFTY')
-        ? 'BANKNIFTY'
-        : symbol.includes('FINNIFTY')
-        ? 'FINNIFTY'
-        : symbol.includes('SENSEX')
-        ? 'SENSEX'
-        : 'NIFTY';
+
+      let underlying = 'NIFTY';
+      if (symbol.includes('BANKNIFTY')) underlying = 'BANKNIFTY';
+      else if (symbol.includes('FINNIFTY')) underlying = 'FINNIFTY';
+      else if (symbol.includes('SENSEX')) underlying = 'SENSEX';
+      else if (symbol.includes('MIDCPNIFTY')) underlying = 'MIDCPNIFTY';
+      else if (symbol.includes('CRUDEOIL')) underlying = 'CRUDEOIL';
+
+      const exchange = symbol.includes('CRUDEOIL') ? 'MCX' : symbol.includes('SENSEX') ? 'BSE' : 'NSE';
 
       // Parse strike price cleanly from symbol
       let strikePrice = 25000;
-      const strikeMatch = symbol.match(/\b(\d{4,5})\s*(?:CE|PE|CALL|PUT)\b/i) || symbol.match(/\s+(\d{4,5})\s+/i);
+      const strikeMatch = symbol.match(/\b(\d{4,5}(?:\.\d{1,2})?)\s*(?:CE|PE|CALL|PUT)\b/i) || symbol.match(/\s+(\d{4,5}(?:\.\d{1,2})?)\s+/i);
       if (strikeMatch) {
         strikePrice = parseFloat(strikeMatch[1]);
       } else {
@@ -495,11 +542,14 @@ function matchSeparateLegs(rows) {
         }
       }
 
-      // Parse option expiry date from symbol
+      // Parse option expiry date from symbol (handles "Aug 18 2026", "Jul 21 2026", "16JUN26", "28 APR 26")
       let expiryDate = date;
-      const expMatch = symbol.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})/i);
-      if (expMatch) {
-        expiryDate = formatDate(`${expMatch[1]} ${expMatch[2]} ${expMatch[3].length === 2 ? '20' + expMatch[3] : expMatch[3]}`);
+      const expMatch1 = symbol.match(/([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})/i);
+      const expMatch2 = symbol.match(/(\d{1,2})\s*([A-Za-z]{3})\s*(\d{2,4})/i);
+      if (expMatch1) {
+        expiryDate = formatDate(`${expMatch1[2]} ${expMatch1[1]} ${expMatch1[3]}`);
+      } else if (expMatch2) {
+        expiryDate = formatDate(`${expMatch2[1]} ${expMatch2[2]} ${expMatch2[3].length === 2 ? '20' + expMatch2[3] : expMatch2[3]}`);
       }
 
       const breakdown = calculateIndianCharges({
@@ -511,7 +561,8 @@ function matchSeparateLegs(rows) {
       });
 
       const grossPnL = Number(((avgSellPrice - avgBuyPrice) * matchQty).toFixed(2));
-      const charges = breakdown.totalCharges;
+      const brokerRowCharges = accumulatedCharges[key] ? Number(accumulatedCharges[key].toFixed(2)) : 0;
+      const charges = brokerRowCharges > 0 ? brokerRowCharges : breakdown.totalCharges;
       const netPnL = Number((grossPnL - charges).toFixed(2));
 
       matchedTrades.push({
@@ -521,7 +572,7 @@ function matchSeparateLegs(rows) {
         exitTime: sells[0]?.time || '10:15',
         symbol,
         underlying,
-        exchange: 'NSE',
+        exchange,
         segment: 'Options',
         direction: 'Long',
         optionType: isCall ? 'CE' : isPut ? 'PE' : null,
@@ -529,8 +580,8 @@ function matchSeparateLegs(rows) {
         tradeType,
         strikePrice,
         expiryDate,
-        lotSize: underlying === 'BANKNIFTY' ? 15 : 25,
-        lots: Math.max(1, Math.round(matchQty / (underlying === 'BANKNIFTY' ? 15 : 25))),
+        lotSize: underlying === 'BANKNIFTY' ? 15 : underlying === 'SENSEX' ? 10 : underlying === 'CRUDEOIL' ? 10 : 25,
+        lots: Math.max(1, Math.round(matchQty / (underlying === 'BANKNIFTY' ? 15 : underlying === 'SENSEX' ? 10 : underlying === 'CRUDEOIL' ? 10 : 25))),
         quantity: matchQty,
         entryPrice: avgBuyPrice,
         exitPrice: avgSellPrice,
@@ -545,7 +596,7 @@ function matchSeparateLegs(rows) {
         exitEmotion: 'Disciplined',
         entryReason: 'Excel Tradebook Execution',
         exitReason: '',
-        notes: `Excel Matched Trade: Gross ₹${grossPnL} - Charges ₹${charges} = Net ₹${netPnL}. (STT: ₹${breakdown.stt}, Stamp: ₹${breakdown.stampDuty}, NSE: ₹${breakdown.exchangeTurnover}, GST: ₹${breakdown.gst})`,
+        notes: `Angel One / Tradebook Execution: Gross ₹${grossPnL} - Charges ₹${charges} = Net ₹${netPnL}. (STT: ₹${breakdown.stt}, Stamp: ₹${breakdown.stampDuty}, NSE/BSE: ₹${breakdown.exchangeTurnover}, GST: ₹${breakdown.gst})`,
         status: 'Closed',
         screenshots: [],
       });
