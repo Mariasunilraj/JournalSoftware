@@ -139,7 +139,14 @@ function localSyncPlugin() {
                 if (!apiKey) {
                   res.statusCode = 400
                   res.setHeader('Content-Type', 'application/json')
-                  res.end(JSON.stringify({ error: 'Please provide a free Gemini API key to parse PDF contract notes.', needsApiKey: true }))
+                  res.end(JSON.stringify({ error: 'Please provide a free Gemini API key to parse PDF contract notes. Excel/CSV tradebooks are parsed automatically without any key!', needsApiKey: true }))
+                  return
+                }
+
+                if (apiKey && !apiKey.startsWith('AIzaSy')) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: "Invalid Gemini API key. Google Gemini API keys from Google AI Studio (aistudio.google.com) start with 'AIzaSy...'. Note: Broker Excel/CSV files are parsed 100% locally without any API key!", needsApiKey: true }))
                   return
                 }
 
@@ -153,9 +160,10 @@ Return ONLY a valid JSON object:
 { "broker": "Broker Name", "tradeDate": "YYYY-MM-DD", "totalCharges": 0, "trades": [...] }`
 
                 const candidateModels = [
+                  'gemini-2.5-flash',
+                  'gemini-2.0-flash',
                   'gemini-1.5-flash',
                   'gemini-1.5-flash-latest',
-                  'gemini-1.5-pro-latest',
                   'gemini-1.5-pro',
                 ]
 

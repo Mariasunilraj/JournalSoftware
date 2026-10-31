@@ -22,7 +22,14 @@ export default async function handler(req, res) {
     const apiKey = userApiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
-        error: 'Missing Gemini API Key. Please provide a free Gemini API key from Google AI Studio (aistudio.google.com) or configure GEMINI_API_KEY in Vercel.',
+        error: 'Missing Gemini API Key. Please provide a free Gemini API key from Google AI Studio (aistudio.google.com) or configure GEMINI_API_KEY in Vercel. For Excel and CSV tradebooks, no API key is required.',
+        needsApiKey: true,
+      });
+    }
+
+    if (apiKey && !apiKey.startsWith('AIzaSy')) {
+      return res.status(400).json({
+        error: "Invalid Gemini API key. Google Gemini API keys from Google AI Studio (aistudio.google.com) start with 'AIzaSy...'. The provided key appears to be an Azure or external token. Excel & CSV tradebooks are parsed automatically without any key!",
         needsApiKey: true,
       });
     }
@@ -99,9 +106,10 @@ IMPORTANT:
     };
 
     const candidateModels = [
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
       'gemini-1.5-flash',
       'gemini-1.5-flash-latest',
-      'gemini-1.5-pro-latest',
       'gemini-1.5-pro',
     ];
 

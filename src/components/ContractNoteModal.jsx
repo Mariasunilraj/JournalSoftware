@@ -95,23 +95,22 @@ export default function ContractNoteModal({
       setFileType(isExcel ? 'excel' : 'csv');
       setStatus('reading');
       try {
-        const { rows, csvText } = await readExcelFile(selectedFile);
+        const { rows, csvText, summaryCharges, detectedBroker: brokerFromSheet } = await readExcelFile(selectedFile);
         setFileCsvText(csvText);
         setExcelRows(rows || []);
 
         // Try direct client-side smart matching
-        const matched = matchTradebookExecutions(rows);
+        const matched = matchTradebookExecutions(rows, { totalBrokerCharges: summaryCharges });
         if (matched && matched.length > 0) {
-          // Detected broker
-          let detectedBroker = 'Broker Tradebook Excel';
+          let detectedBroker = brokerFromSheet || 'Broker Tradebook Excel';
           const lowerName = fileName.toLowerCase();
-          if (lowerName.includes('zerodha') || lowerName.includes('tradebook')) detectedBroker = 'Zerodha Tradebook';
-          else if (lowerName.includes('groww')) detectedBroker = 'Groww Tradebook';
+          if (lowerName.includes('zerodha') || lowerName.includes('tradebook')) detectedBroker = 'Zerodha Console Tradebook';
+          else if (lowerName.includes('groww') || lowerName.includes('pnl')) detectedBroker = 'Groww F&O P&L';
           else if (lowerName.includes('angel')) detectedBroker = 'Angel One Tradebook';
           else if (lowerName.includes('dhan')) detectedBroker = 'Dhan Tradebook';
           else if (lowerName.includes('upstox')) detectedBroker = 'Upstox Tradebook';
 
-          const totalCharges = matched.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
+          const totalCharges = summaryCharges || matched.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
 
           setParsedData({
             broker: detectedBroker,
@@ -156,26 +155,58 @@ export default function ContractNoteModal({
     setStatus('parsing');
     setError(null);
 
-    // 1. Instant Client-Side Check: If Excel/CSV rows can be matched directly, skip API call entirely!
-    if (fileType !== 'pdf' && excelRows && excelRows.length > 0) {
+    // 1. Instant Client-Side Check: If Excel/CSV file, match directly and bypass AI completely!
+    if (fileType !== 'pdf') {
       try {
-        const directMatches = matchTradebookExecutions(excelRows);
-        if (directMatches && directMatches.length > 0) {
-          const totalCharges = directMatches.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
-          setParsedData({
-            broker: 'Broker Tradebook / P&L Excel',
-            tradeDate: directMatches[0]?.date || new Date().toISOString().slice(0, 10),
-            totalCharges: Number(totalCharges.toFixed(2)),
-            trades: directMatches,
-            sourceType: fileType,
-          });
-          setSelectedIndices(directMatches.map((_, i) => i));
-          setStatus('review');
-          return;
+        let currentRows = excelRows;
+        let summaryCharges = 0;
+        let brokerName = null;
+
+        if (!currentRows || currentRows.length === 0) {
+          if (file) {
+            const res = await readExcelFile(file);
+            currentRows = res.rows;
+            summaryCharges = res.summaryCharges;
+            brokerName = res.detectedBroker;
+            setExcelRows(res.rows);
+            setFileCsvText(res.csvText);
+          }
+        }
+
+        if (currentRows && currentRows.length > 0) {
+          const directMatches = matchTradebookExecutions(currentRows, { totalBrokerCharges: summaryCharges });
+          if (directMatches && directMatches.length > 0) {
+            let finalBroker = brokerName || 'Broker Tradebook Excel';
+            const lowerName = (file?.name || '').toLowerCase();
+            if (lowerName.includes('zerodha') || lowerName.includes('tradebook')) finalBroker = 'Zerodha Console Tradebook';
+            else if (lowerName.includes('groww') || lowerName.includes('pnl')) finalBroker = 'Groww F&O P&L';
+            else if (lowerName.includes('angel')) finalBroker = 'Angel One Tradebook';
+            else if (lowerName.includes('dhan')) finalBroker = 'Dhan Tradebook';
+            else if (lowerName.includes('upstox')) finalBroker = 'Upstox Tradebook';
+
+            const totalCharges = summaryCharges || directMatches.reduce((acc, t) => acc + (Number(t.charges) || 0), 0);
+            setParsedData({
+              broker: finalBroker,
+              tradeDate: directMatches[0]?.date || new Date().toISOString().slice(0, 10),
+              totalCharges: Number(totalCharges.toFixed(2)),
+              trades: directMatches,
+              sourceType: fileType,
+            });
+            setSelectedIndices(directMatches.map((_, i) => i));
+            setStatus('review');
+            return;
+          }
         }
       } catch (err) {
-        console.warn('Direct matching fallback to AI:', err);
+        console.warn('Direct matching error:', err);
       }
+    }
+
+    const trimmedKey = apiKey.trim();
+    if (trimmedKey && !trimmedKey.startsWith('AIzaSy')) {
+      setError("Notice: Google Gemini API keys start with 'AIzaSy...'. The key provided appears to be an Azure or external token. For broker Excel & CSV files, no API key is required — Delta Journal extracts trades automatically!");
+      setStatus('idle');
+      return;
     }
 
     try {
@@ -190,7 +221,7 @@ export default function ContractNoteModal({
         payload = {
           fileBase64,
           mimeType: 'application/pdf',
-          apiKey: apiKey.trim() || undefined,
+          apiKey: trimmedKey || undefined,
         };
       } else {
         // For Excel / CSV, send the extracted CSV tabular text encoded as base64
@@ -203,7 +234,7 @@ export default function ContractNoteModal({
         payload = {
           fileBase64: `data:text/csv;base64,${b64Csv}`,
           mimeType: 'text/csv',
-          apiKey: apiKey.trim() || undefined,
+          apiKey: trimmedKey || undefined,
         };
       }
 

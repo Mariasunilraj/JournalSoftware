@@ -1,6 +1,7 @@
 /**
  * Intelligent Broker Excel (.xlsx, .xls) & CSV Tradebook Parser
- * Supports: Zerodha, Groww, Angel One, Dhan, Upstox, Kotak Neo, Shoonya, ICICI Direct, and standard journal spreadsheets
+ * Supports: Groww, Zerodha, Angel One, Dhan, Upstox, Kotak Neo, Shoonya, ICICI Direct, and standard journal spreadsheets
+ * 100% Client-side, fast, deterministic, and requires NO external AI API key.
  */
 
 import { calculateIndianCharges } from './chargesCalculator';
@@ -28,8 +29,116 @@ export async function getXLSX() {
 }
 
 /**
+ * Universal grid and CSV scanner that finds trade headers, bypasses metadata banners,
+ * extracts all trade records across single or multi-table sheets (e.g. Futures & Options),
+ * and detects official broker charges from summary blocks.
+ */
+export function parseGridOrCsv(rawGrid, text = '') {
+  let detectedCharges = 0;
+  let detectedBroker = null;
+
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes('groww') || lowerText.includes('realised trades (trade level)')) {
+    detectedBroker = 'Groww F&O P&L';
+  } else if (lowerText.includes('zerodha') || lowerText.includes('console')) {
+    detectedBroker = 'Zerodha Console Tradebook';
+  } else if (lowerText.includes('angel')) {
+    detectedBroker = 'Angel One Tradebook';
+  } else if (lowerText.includes('dhan')) {
+    detectedBroker = 'Dhan Tradebook';
+  } else if (lowerText.includes('upstox')) {
+    detectedBroker = 'Upstox Tradebook';
+  }
+
+  // Detect total charges from summary blocks if present (e.g. Groww summary table)
+  if (rawGrid && rawGrid.length > 0) {
+    for (let i = 0; i < Math.min(rawGrid.length, 35); i++) {
+      const row = rawGrid[i] || [];
+      const cell0 = String(row[0] || '').trim().toLowerCase();
+      if (cell0 === 'charges' || cell0.includes('charges')) {
+        for (let j = i + 1; j < Math.min(rawGrid.length, i + 15); j++) {
+          const subRow = rawGrid[j] || [];
+          const subCell0 = String(subRow[0] || '').trim().toLowerCase();
+          if (subCell0 === 'total') {
+            const val = parseFloat(subRow[1]);
+            if (val > 0) detectedCharges = val;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Scan rawGrid for all table header rows and their child trade rows
+  const rows = [];
+  let currentHeaders = null;
+
+  if (rawGrid && rawGrid.length > 0) {
+    for (let i = 0; i < rawGrid.length; i++) {
+      const rowArr = rawGrid[i] || [];
+      if (!rowArr || rowArr.length === 0 || rowArr.every((c) => String(c !== undefined && c !== null ? c : '').trim() === '')) {
+        continue;
+      }
+
+      const rowStrings = rowArr.map((v) => String(v !== undefined && v !== null ? v : '').trim());
+      const lowerStrings = rowStrings.map((v) => v.toLowerCase().replace(/[\s_.\-&/]+/g, ''));
+
+      // Check if this row is a trade table header
+      const matchCount = [
+        'symbol', 'tradingsymbol', 'scripname', 'scrip', 'instrument', 'contract', 'particulars',
+        'tradedate', 'date', 'orderdate', 'buyprice', 'buyavg', 'buyrate', 'sellprice', 'sellavg',
+        'sellrate', 'realizedpnl', 'realisedpnl', 'quantity', 'qty', 'tradedqty'
+      ].filter((k) => lowerStrings.some((cell) => cell.includes(k))).length;
+
+      if (matchCount >= 2) {
+        currentHeaders = rowStrings;
+        continue;
+      }
+
+      if (currentHeaders && currentHeaders.length > 0) {
+        const firstCell = String(rowArr[0] || '').trim().toLowerCase();
+
+        // Skip metadata / total / summary / disclaimer rows
+        if (
+          firstCell === 'total' ||
+          firstCell.startsWith('disclaimer') ||
+          firstCell.startsWith('sub total') ||
+          firstCell === 'summary' ||
+          firstCell === 'charges'
+        ) {
+          continue;
+        }
+
+        // Skip standalone section headers like "Options", "Futures", "Equity"
+        const nonEmpties = rowArr.filter((c) => String(c !== undefined && c !== null ? c : '').trim() !== '');
+        if (nonEmpties.length === 1 && (firstCell === 'futures' || firstCell === 'options' || firstCell === 'equity')) {
+          continue;
+        }
+
+        const obj = {};
+        let hasVal = false;
+        currentHeaders.forEach((h, colIdx) => {
+          if (h) {
+            const val = rowArr[colIdx] !== undefined && rowArr[colIdx] !== null ? rowArr[colIdx] : '';
+            obj[h] = val;
+            if (String(val).trim() !== '') hasVal = true;
+          }
+        });
+
+        // Ensure row has at least an instrument name or price
+        if (hasVal) {
+          rows.push(obj);
+        }
+      }
+    }
+  }
+
+  return { rows, summaryCharges: detectedCharges, detectedBroker };
+}
+
+/**
  * Read Excel file (.xlsx, .xls) and convert active sheet into JSON rows and CSV text
- * Scans all sheets and handles metadata header rows automatically
+ * Scans all sheets in the workbook and selects the sheet with the most trade records
  */
 export async function readExcelFile(file) {
   const isCSV = file.name.toLowerCase().endsWith('.csv');
@@ -38,11 +147,15 @@ export async function readExcelFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target.result;
+        const text = e.target.result || '';
+        const lines = text.split(/\r?\n/).map((l) => l.split(','));
+        const { rows, summaryCharges, detectedBroker } = parseGridOrCsv(lines, text);
         resolve({
           sheetName: 'CSV Data',
           csvText: text,
-          rows: parseCSVToRows(text),
+          rows: rows.length > 0 ? rows : parseCSVToRows(text),
+          summaryCharges,
+          detectedBroker,
         });
       };
       reader.onerror = () => reject(new Error('Failed to read CSV file.'));
@@ -58,62 +171,44 @@ export async function readExcelFile(file) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
 
-        // Find the best sheet (prioritize F&O, Trades, P&L, Derivatives)
-        let chosenSheetName = workbook.SheetNames[0];
-        const fnoSheet = workbook.SheetNames.find((s) => {
-          const l = s.toLowerCase();
-          return l.includes('f&o') || l.includes('fno') || l.includes('derivative') || l.includes('trade') || l.includes('position');
-        });
-        if (fnoSheet) {
-          chosenSheetName = fnoSheet;
-        }
+        let bestRows = [];
+        let bestCsvText = '';
+        let bestSheetName = workbook.SheetNames[0] || 'Sheet1';
+        let detectedCharges = 0;
+        let detectedBrokerName = null;
 
-        const worksheet = workbook.Sheets[chosenSheetName];
+        // Iterate through all sheets to find trades
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName];
+          if (!worksheet) continue;
 
-        // 1. Convert to 2D array of raw rows to locate true header row (bypassing metadata banners)
-        const rawGrid = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-        let headerRowIdx = -1;
+          const sheetCsv = XLSX.utils.sheet_to_csv(worksheet);
+          const rawGrid = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-        const headerKeywords = [
-          'symbol', 'tradingsymbol', 'scrip', 'instrument', 'contract', 'particulars',
-          'trade date', 'tradedate', 'date', 'order date', 'buy avg', 'buy price',
-          'buy rate', 'sell avg', 'sell price', 'realized p&l', 'realised p&l', 'p&l',
-        ];
+          const { rows, summaryCharges, detectedBroker } = parseGridOrCsv(rawGrid, sheetCsv);
 
-        for (let i = 0; i < Math.min(rawGrid.length, 25); i++) {
-          const rowValues = (rawGrid[i] || []).map((v) => String(v).trim().toLowerCase());
-          const matchCount = headerKeywords.filter((k) =>
-            rowValues.some((cell) => cell.includes(k) || k.includes(cell) && cell.length > 2)
-          ).length;
-
-          if (matchCount >= 2) {
-            headerRowIdx = i;
-            break;
+          if (rows.length > bestRows.length) {
+            bestRows = rows;
+            bestCsvText = sheetCsv;
+            bestSheetName = sheetName;
+            if (summaryCharges) detectedCharges = summaryCharges;
+            if (detectedBroker) detectedBrokerName = detectedBroker;
           }
         }
 
-        let rows = [];
-        if (headerRowIdx >= 0) {
-          const headers = (rawGrid[headerRowIdx] || []).map((h) => String(h || '').trim());
-          for (let r = headerRowIdx + 1; r < rawGrid.length; r++) {
-            const rowArr = rawGrid[r];
-            if (!rowArr || rowArr.length === 0 || rowArr.every((c) => c === '')) continue;
-            const obj = {};
-            headers.forEach((h, colIdx) => {
-              if (h) obj[h] = rowArr[colIdx] !== undefined ? rowArr[colIdx] : '';
-            });
-            rows.push(obj);
-          }
-        } else {
-          rows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false });
+        // If no rows found through multi-section scanner, fallback to standard sheet_to_json
+        if (bestRows.length === 0 && workbook.SheetNames[0]) {
+          const ws = workbook.Sheets[workbook.SheetNames[0]];
+          bestRows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+          bestCsvText = XLSX.utils.sheet_to_csv(ws);
         }
-
-        const csvText = XLSX.utils.sheet_to_csv(worksheet);
 
         resolve({
-          sheetName: chosenSheetName,
-          rows,
-          csvText,
+          sheetName: bestSheetName,
+          rows: bestRows,
+          csvText: bestCsvText,
+          summaryCharges: detectedCharges,
+          detectedBroker: detectedBrokerName,
         });
       } catch (err) {
         reject(new Error(`Failed to parse Excel workbook: ${err.message}`));
@@ -130,7 +225,7 @@ function parseCSVToRows(text) {
   if (lines.length < 2) return [];
 
   let headerIdx = 0;
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+  for (let i = 0; i < Math.min(lines.length, 30); i++) {
     const lLower = lines[i].toLowerCase();
     if (
       lLower.includes('symbol') ||
@@ -162,14 +257,14 @@ function parseCSVToRows(text) {
 /**
  * Intelligent trade matching: Matches P&L reports (Fno_Pnl_Report.xlsx) or Tradebook executions
  */
-export function matchTradebookExecutions(rows) {
+export function matchTradebookExecutions(rows, options = {}) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
   // Normalize column names
   const normalizedRows = rows.map((r) => {
     const norm = {};
     for (const key of Object.keys(r)) {
-      const cleanKey = key.trim().toLowerCase().replace(/[\s_.-]+/g, '');
+      const cleanKey = key.trim().toLowerCase().replace(/[\s_.\-&/]+/g, '');
       norm[cleanKey] = r[key];
     }
     return norm;
@@ -179,28 +274,37 @@ export function matchTradebookExecutions(rows) {
   const isPreAggregated = normalizedRows.some(
     (r) =>
       (r.entryprice || r.buyprice || r.buyavg || r.buyrate || r.buyvalue || r.buyavgprice) &&
-      (r.exitprice || r.sellprice || r.sellavg || r.sellrate || r.sellvalue || r.sellavgprice || r.realizedpnl !== undefined)
+      (r.exitprice || r.sellprice || r.sellavg || r.sellrate || r.sellvalue || r.sellavgprice || r.realizedpnl !== undefined || r.realisedpnl !== undefined)
   );
 
   if (isPreAggregated) {
-    return parsePreAggregatedRows(normalizedRows);
+    return parsePreAggregatedRows(normalizedRows, options);
   }
 
   // Otherwise, match separate Buy and Sell execution rows (Tradebook format)
   return matchSeparateLegs(normalizedRows);
 }
 
-function parsePreAggregatedRows(rows) {
+function parsePreAggregatedRows(rows, options = {}) {
   const trades = [];
 
   rows.forEach((r, idx) => {
-    const rawDate = r.date || r.tradedate || r.entrydate || r.exitdate || r.closedate || new Date().toISOString().slice(0, 10);
+    const rawDate =
+      r.selldate ||
+      r.buydate ||
+      r.date ||
+      r.tradedate ||
+      r.entrydate ||
+      r.exitdate ||
+      r.closedate ||
+      new Date().toISOString().slice(0, 10);
+
     const date = formatDate(rawDate);
 
     const symbol = (
+      r.scripname ||
       r.symbol ||
       r.tradingsymbol ||
-      r.scripname ||
       r.scrip ||
       r.instrument ||
       r.contract ||
@@ -242,8 +346,8 @@ function parsePreAggregatedRows(rows) {
       if (entryPrice <= 0) entryPrice = 100;
       if (exitPrice <= 0) exitPrice = entryPrice + (realizedPnL / quantity || 0);
 
-      const isCall = symbol.includes('CE') || r.type === 'Call' || r.tradetype === 'Call';
-      const isPut = symbol.includes('PE') || r.type === 'Put' || r.tradetype === 'Put';
+      const isCall = symbol.includes('CE') || symbol.includes('CALL') || r.type === 'Call' || r.tradetype === 'Call';
+      const isPut = symbol.includes('PE') || symbol.includes('PUT') || r.type === 'Put' || r.tradetype === 'Put';
       const tradeType = isCall ? 'Call' : isPut ? 'Put' : 'Call';
 
       let underlying = 'NIFTY';
@@ -251,6 +355,25 @@ function parsePreAggregatedRows(rows) {
       else if (symbol.includes('FINNIFTY')) underlying = 'FINNIFTY';
       else if (symbol.includes('SENSEX')) underlying = 'SENSEX';
       else if (symbol.includes('MIDCPNIFTY')) underlying = 'MIDCPNIFTY';
+
+      // Parse strike price cleanly from symbol (e.g. "NIFTY 28 APR 26 23800 Put" -> 23800)
+      let strikePrice = 25000;
+      const strikeMatch = symbol.match(/\b(\d{4,5})\s*(?:CE|PE|CALL|PUT)\b/i) || symbol.match(/\s+(\d{4,5})\s+/i);
+      if (strikeMatch) {
+        strikePrice = parseFloat(strikeMatch[1]);
+      } else {
+        const nums = symbol.match(/\b\d{4,5}\b/g);
+        if (nums && nums.length > 0) {
+          strikePrice = parseFloat(nums[nums.length - 1]);
+        }
+      }
+
+      // Parse option expiry date from symbol if present (e.g. "28 APR 26" -> 2026-04-28)
+      let expiryDate = date;
+      const expMatch = symbol.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})/i);
+      if (expMatch) {
+        expiryDate = formatDate(`${expMatch[1]} ${expMatch[2]} ${expMatch[3].length === 2 ? '20' + expMatch[3] : expMatch[3]}`);
+      }
 
       const breakdown = calculateIndianCharges({
         segment: 'Options',
@@ -280,8 +403,8 @@ function parsePreAggregatedRows(rows) {
         optionType: isCall ? 'CE' : isPut ? 'PE' : null,
         optionAction: 'Buy',
         tradeType,
-        strikePrice: parseFloat(symbol.replace(/\D/g, '')) || 25000,
-        expiryDate: date,
+        strikePrice,
+        expiryDate,
         lotSize: underlying === 'BANKNIFTY' ? 15 : 25,
         lots: Math.max(1, Math.round(quantity / (underlying === 'BANKNIFTY' ? 15 : 25))),
         quantity,
@@ -349,8 +472,8 @@ function matchSeparateLegs(rows) {
       const avgBuyPrice = totalBuyQty > 0 ? Number((buyValue / totalBuyQty).toFixed(2)) : 0;
       const avgSellPrice = totalSellQty > 0 ? Number((sellValue / totalSellQty).toFixed(2)) : 0;
 
-      const isCall = symbol.includes('CE');
-      const isPut = symbol.includes('PE');
+      const isCall = symbol.includes('CE') || symbol.includes('CALL');
+      const isPut = symbol.includes('PE') || symbol.includes('PUT');
       const tradeType = isCall ? 'Call' : isPut ? 'Put' : 'Call';
       const underlying = symbol.includes('BANKNIFTY')
         ? 'BANKNIFTY'
@@ -359,6 +482,25 @@ function matchSeparateLegs(rows) {
         : symbol.includes('SENSEX')
         ? 'SENSEX'
         : 'NIFTY';
+
+      // Parse strike price cleanly from symbol
+      let strikePrice = 25000;
+      const strikeMatch = symbol.match(/\b(\d{4,5})\s*(?:CE|PE|CALL|PUT)\b/i) || symbol.match(/\s+(\d{4,5})\s+/i);
+      if (strikeMatch) {
+        strikePrice = parseFloat(strikeMatch[1]);
+      } else {
+        const nums = symbol.match(/\b\d{4,5}\b/g);
+        if (nums && nums.length > 0) {
+          strikePrice = parseFloat(nums[nums.length - 1]);
+        }
+      }
+
+      // Parse option expiry date from symbol
+      let expiryDate = date;
+      const expMatch = symbol.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})/i);
+      if (expMatch) {
+        expiryDate = formatDate(`${expMatch[1]} ${expMatch[2]} ${expMatch[3].length === 2 ? '20' + expMatch[3] : expMatch[3]}`);
+      }
 
       const breakdown = calculateIndianCharges({
         segment: 'Options',
@@ -385,8 +527,8 @@ function matchSeparateLegs(rows) {
         optionType: isCall ? 'CE' : isPut ? 'PE' : null,
         optionAction: 'Buy',
         tradeType,
-        strikePrice: parseFloat(symbol.replace(/\D/g, '')) || 25000,
-        expiryDate: date,
+        strikePrice,
+        expiryDate,
         lotSize: underlying === 'BANKNIFTY' ? 15 : 25,
         lots: Math.max(1, Math.round(matchQty / (underlying === 'BANKNIFTY' ? 15 : 25))),
         quantity: matchQty,
@@ -413,21 +555,45 @@ function matchSeparateLegs(rows) {
   return matchedTrades;
 }
 
-function formatDate(val) {
+export function formatDate(val) {
   if (!val) return new Date().toISOString().slice(0, 10);
   if (val instanceof Date) {
     return val.toISOString().slice(0, 10);
   }
+
+  // Handle Excel numeric date serials (e.g. 46136)
+  if (typeof val === 'number' && val > 30000 && val < 60000) {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0, 10);
+  }
+
   const str = String(val).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
     return str.slice(0, 10);
   }
-  const parts = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-  if (parts) {
-    const day = parts[1].padStart(2, '0');
-    const month = parts[2].padStart(2, '0');
-    const year = parts[3];
-    return `${year}-${month}-${day}`;
+
+  const months = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  };
+
+  // e.g. "24 Apr 2026" or "24-Apr-2026"
+  const m1 = str.match(/^(\d{1,2})[\s\-]+([A-Za-z]{3})[\s\-]+(\d{2,4})/);
+  if (m1) {
+    const day = m1[1].padStart(2, '0');
+    const mon = months[m1[2].toLowerCase()] || '01';
+    const yr = m1[3].length === 2 ? `20${m1[3]}` : m1[3];
+    return `${yr}-${mon}-${day}`;
   }
+
+  // e.g. "24/04/2026" or "24-04-2026"
+  const m2 = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (m2) {
+    const day = m2[1].padStart(2, '0');
+    const mon = m2[2].padStart(2, '0');
+    const yr = m2[3].length === 2 ? `20${m2[3]}` : m2[3];
+    return `${yr}-${mon}-${day}`;
+  }
+
   return new Date().toISOString().slice(0, 10);
 }
