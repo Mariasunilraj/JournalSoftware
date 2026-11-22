@@ -148,6 +148,12 @@ export default function App() {
       }
 
       if (serverData && (serverData.trades || serverData.diary || serverData.capitalLogs || serverData.settings)) {
+        // Prevent redundant state re-renders if neither client nor server changed
+        if (serverData.updatedAt && serverData.updatedAt === lastSyncTimeVal && lastModifiedVal <= lastSyncTimeVal) {
+          setSyncStatus('synced');
+          return;
+        }
+
         const merged = mergeDatasets(localData, serverData, lastSyncTimeVal, lastModifiedVal, deletedIds);
         setTrades(merged.trades);
         setDiary(merged.diary);
@@ -584,6 +590,7 @@ export default function App() {
               trades={trades}
               onViewTrade={handleOpenViewTrade}
               onOpenTradeModal={handleOpenEditTrade}
+              settings={settings}
             />
           )}
 
@@ -641,7 +648,8 @@ export default function App() {
             handleRequestDeleteTrade(trade);
           }}
           initialTrade={editingTrade}
-          defaultBrokerage={settings.defaultBrokeragePerOrder || 20}
+          defaultBrokerage={settings?.defaultBrokeragePerOrder || 20}
+          settings={settings}
         />
       )}
 

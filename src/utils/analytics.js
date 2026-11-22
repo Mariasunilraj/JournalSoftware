@@ -34,13 +34,19 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
       maxConsecutiveWins: 0,
       maxConsecutiveLosses: 0,
       currentStreak: { type: 'none', count: 0 },
-      equityCurve: [{ date: 'Start', equity: initialCapital, netPnL: 0, tradeIndex: 0 }],
+      equityCurve: [{ date: 'Start', equity: initialCapital, grossEquity: initialCapital, netPnL: 0, grossPnL: 0, cumulativePnL: 0, cumulativeGrossPnL: 0, tradeIndex: 0 }],
       segmentStats: {},
       strategyStats: {},
       optionsStats: { cePnL: 0, pePnL: 0, buyingPnL: 0, sellingPnL: 0, expiryDayPnL: 0, nonExpiryDayPnL: 0 },
       disciplineStats: { followedPnL: 0, violatedPnL: 0, followedCount: 0, violatedCount: 0 },
       emotionStats: {},
       weekdayStats: { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 },
+      weekdayCounts: { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 },
+      chargesInsight: {
+        chargesToGrossPercent: null,
+        chargesPerTrade: 0,
+        breakevenPointsPerTrade: 0,
+      },
       timeSessionStats: { 'Morning (9:15-11:00)': 0, 'Mid-Day (11:00-13:30)': 0, 'Afternoon (13:30-15:30)': 0 },
       bestDay: null,
       worstDay: null,
@@ -101,17 +107,24 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
 
   // Running equity curve & peak tracking
   let runningEquity = initialCapital;
+  let runningGrossPnL = 0;
+  let totalQuantityTraded = 0;
   let peakEquity = initialCapital;
   let maxDrawdownAmount = 0;
-  let maxDrawdownPercent = 0;
+  let maxDrawdownPercent = peakEquity > 0 ? 0 : null;
+
+  const weekdayCounts = { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 };
 
   const equityCurve = [
     {
       tradeIndex: 0,
       date: 'Start',
       equity: initialCapital,
+      grossEquity: initialCapital,
       netPnL: 0,
+      grossPnL: 0,
       cumulativePnL: 0,
+      cumulativeGrossPnL: 0,
       drawdown: 0,
     },
   ];
@@ -120,9 +133,11 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
     const net = Number(trade.netPnL) || 0;
     const gross = Number(trade.grossPnL) || 0;
     const charges = Number(trade.charges) || 0;
+    const qty = Number(trade.quantity) || 0;
 
     grossPnL += gross;
     totalCharges += charges;
+    totalQuantityTraded += qty;
 
     if (net > 0) {
       winningTrades++;
@@ -147,12 +162,20 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
     }
 
     // Equity Curve & Drawdown
+    // Equity = initial capital + cumulative net P&L
     runningEquity += net;
+    runningGrossPnL += gross;
+    const runningGrossEquity = initialCapital + runningGrossPnL;
+
     if (runningEquity > peakEquity) {
       peakEquity = runningEquity;
     }
-    const currentDrawdownAmount = peakEquity - runningEquity;
-    const currentDrawdownPercent = peakEquity > 0 ? (currentDrawdownAmount / peakEquity) * 100 : 0;
+    const currentDrawdownAmount = Math.max(0, peakEquity - runningEquity);
+    // Drawdown percentage: (peak equity - trough equity) / peak equity
+    // A percentage equity drawdown cannot exceed 100%. If peak equity <= 0, drawdown percent is null (N/A)
+    const currentDrawdownPercent = peakEquity > 0
+      ? Math.min(100, Math.max(0, (currentDrawdownAmount / peakEquity) * 100))
+      : null;
 
     if (currentDrawdownAmount > maxDrawdownAmount) {
       maxDrawdownAmount = currentDrawdownAmount;
@@ -164,10 +187,13 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
       date: trade.date,
       symbol: trade.symbol,
       netPnL: net,
+      grossPnL: gross,
       equity: Number(runningEquity.toFixed(2)),
+      grossEquity: Number(runningGrossEquity.toFixed(2)),
       cumulativePnL: Number((runningEquity - initialCapital).toFixed(2)),
+      cumulativeGrossPnL: Number(runningGrossPnL.toFixed(2)),
       drawdown: Number(currentDrawdownAmount.toFixed(2)),
-      drawdownPercent: Number(currentDrawdownPercent.toFixed(2)),
+      drawdownPercent: currentDrawdownPercent !== null ? Number(currentDrawdownPercent.toFixed(2)) : null,
     });
 
     // Daily & Monthly grouping
@@ -257,6 +283,7 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
       const dayName = dayNames[dayIndex];
       if (weekdayStats[dayName] !== undefined) {
         weekdayStats[dayName] += net;
+        weekdayCounts[dayName] = (weekdayCounts[dayName] || 0) + 1;
       }
     }
 
@@ -284,6 +311,17 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
 
   // Expectancy = (Win% * AvgWin) - (Loss% * AvgLoss)
   const expectancy = (winRate / 100) * avgWin - (lossRate / 100) * avgLoss;
+
+  // Charges vs Gross Insights
+  const chargesToGrossPercent = grossProfit > 0
+    ? Number(((totalCharges / grossProfit) * 100).toFixed(1))
+    : (grossPnL > 0 ? Number(((totalCharges / grossPnL) * 100).toFixed(1)) : null);
+  const chargesPerTrade = totalTrades > 0
+    ? Number((totalCharges / totalTrades).toFixed(2))
+    : 0;
+  const breakevenPointsPerTrade = totalQuantityTraded > 0
+    ? Number((totalCharges / totalQuantityTraded).toFixed(2))
+    : (totalTrades > 0 ? Number((chargesPerTrade / 25).toFixed(2)) : 0);
 
   // Best and worst trading days
   const dailyList = Object.values(dailyPnLMap).sort((a, b) => b.netPnL - a.netPnL);
@@ -326,7 +364,12 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
     largestLoss: Number(largestLoss.toFixed(2)),
     expectancy: Number(expectancy.toFixed(2)),
     maxDrawdownAmount: Number(maxDrawdownAmount.toFixed(2)),
-    maxDrawdownPercent: Number(maxDrawdownPercent.toFixed(2)),
+    maxDrawdownPercent: maxDrawdownPercent !== null ? Number(maxDrawdownPercent.toFixed(2)) : null,
+    chargesInsight: {
+      chargesToGrossPercent,
+      chargesPerTrade,
+      breakevenPointsPerTrade,
+    },
     maxConsecutiveWins,
     maxConsecutiveLosses,
     currentStreak,
@@ -337,6 +380,7 @@ export function calculateAnalytics(trades = [], initialCapital = 0) {
     disciplineStats,
     emotionStats,
     weekdayStats,
+    weekdayCounts,
     timeSessionStats,
     bestDay,
     worstDay,

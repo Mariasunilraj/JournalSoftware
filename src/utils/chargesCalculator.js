@@ -1,6 +1,8 @@
+import { DEFAULT_EXCHANGE_RATES } from './constants';
+
 /**
  * Accurate Indian Brokerage and Statutory Charges Calculator
- * Reflected from: INDIA F&O OPTIONS TAX & CHARGES GUIDE (Rates from 1 April 2026 onwards)
+ * Supports configurable exchange-specific rates for NSE and BSE
  * Covers: NSE/BSE Options, Futures, Equity Intraday, and Equity Delivery
  */
 
@@ -12,7 +14,21 @@ export function calculateIndianCharges({
   exitPrice = 0,
   quantity = 0,
   brokeragePerOrder = 20,
+  exchange = 'NSE',
+  symbol = '',
+  exchangeRates = null,
 }) {
+  const rates = exchangeRates || DEFAULT_EXCHANGE_RATES;
+  const effectiveBrokerage = Number(brokeragePerOrder) || Number(rates?.brokeragePerOrder) || 20;
+
+  // Detect exchange from symbol or underlying if not explicitly BSE
+  let effectiveExchange = (exchange || 'NSE').toUpperCase();
+  const symUpper = (symbol || '').toUpperCase();
+  if (symUpper.includes('SENSEX') || symUpper.includes('BANKEX')) {
+    effectiveExchange = 'BSE';
+  }
+
+  const exchangeConfig = rates[effectiveExchange] || rates.NSE || DEFAULT_EXCHANGE_RATES.NSE;
   const buyPrice = direction === 'Long' ? Number(entryPrice) : Number(exitPrice);
   const sellPrice = direction === 'Long' ? Number(exitPrice) : Number(entryPrice);
   const qty = Number(quantity);
@@ -46,53 +62,51 @@ export function calculateIndianCharges({
 
   if (isOption) {
     // 1. Brokerage: ₹20 per executed order (round-trip = ₹40 flat for discount brokers)
-    brokerage = brokeragePerOrder * 2;
+    brokerage = effectiveBrokerage * 2;
 
-    // 2. STT: 0.15% on option premium on every sell transaction (closing long or opening short)
-    stt = sellTurnover * 0.0015;
+    // 2. STT: e.g. 0.15% on option premium on sell transaction
+    const sttRate = (exchangeConfig.optionsSttSellRate ?? 0.15) / 100;
+    stt = sellTurnover * sttRate;
 
-    // 3. Stamp Duty: 0.003% on buy side only
-    stampDuty = buyTurnover * 0.00003;
+    // 3. Stamp Duty: e.g. 0.003% on buy side only
+    const stampRate = (exchangeConfig.optionsStampDutyBuyRate ?? 0.003) / 100;
+    stampDuty = buyTurnover * stampRate;
 
-    // 4. NSE Options Transaction Charge: 0.03553% on total premium turnover (buy + sell)
-    exchangeTurnover = totalTurnover * 0.0003553;
+    // 4. Exchange Transaction Charge: e.g. NSE: 0.03553%, BSE: 0.05%
+    const txnRate = (exchangeConfig.optionsTxnRate ?? (effectiveExchange === 'BSE' ? 0.05 : 0.03553)) / 100;
+    exchangeTurnover = totalTurnover * txnRate;
   } else if (segment === 'Futures') {
     // Futures: ₹20 flat per order = ₹40
-    brokerage = brokeragePerOrder * 2;
-    // STT: 0.02% on sell turnover
-    stt = sellTurnover * 0.0002;
-    // Stamp duty: 0.002% on buy turnover
-    stampDuty = buyTurnover * 0.00002;
-    // NSE Futures transaction charge: 0.00173%
-    exchangeTurnover = totalTurnover * 0.0000173;
+    brokerage = effectiveBrokerage * 2;
+    const sttRate = (exchangeConfig.futuresSttSellRate ?? 0.02) / 100;
+    stt = sellTurnover * sttRate;
+    const stampRate = (exchangeConfig.futuresStampDutyBuyRate ?? 0.002) / 100;
+    stampDuty = buyTurnover * stampRate;
+    const txnRate = (exchangeConfig.futuresTxnRate ?? 0.00173) / 100;
+    exchangeTurnover = totalTurnover * txnRate;
   } else if (segment === 'Equity Delivery') {
     // Delivery: ₹0 brokerage on discount brokers
     brokerage = 0;
-    // STT: 0.1% on both buy and sell
     stt = totalTurnover * 0.001;
-    // Stamp duty: 0.015% on buy
     stampDuty = buyTurnover * 0.00015;
-    // NSE equity delivery charge: 0.00297%
     exchangeTurnover = totalTurnover * 0.0000297;
   } else {
     // Equity Intraday: ₹20 or 0.03% per executed order
-    const buyBrokerage = Math.min(brokeragePerOrder, buyTurnover * 0.0003);
-    const sellBrokerage = Math.min(brokeragePerOrder, sellTurnover * 0.0003);
+    const buyBrokerage = Math.min(effectiveBrokerage, buyTurnover * 0.0003);
+    const sellBrokerage = Math.min(effectiveBrokerage, sellTurnover * 0.0003);
     brokerage = buyBrokerage + sellBrokerage;
-    // STT: 0.025% on sell only
     stt = sellTurnover * 0.00025;
-    // Stamp duty: 0.003% on buy
     stampDuty = buyTurnover * 0.00003;
-    // NSE intraday charge: 0.00297%
     exchangeTurnover = totalTurnover * 0.0000297;
   }
 
   // 5. SEBI turnover fee: ₹10 per crore (0.0001%) on total turnover
-  const sebiCharges = totalTurnover * 0.000001;
+  const sebiRate = rates.sebiTurnoverRate ?? 0.000001;
+  const sebiCharges = totalTurnover * sebiRate;
 
   // 6. GST: 18% on (Brokerage + Exchange Transaction Charges + SEBI Fee).
-  // Note: Never apply GST to STT or Stamp Duty (statutory government levies).
-  const gst = (brokerage + exchangeTurnover + sebiCharges) * 0.18;
+  const gstPercent = (rates.gstRate ?? 18) / 100;
+  const gst = (brokerage + exchangeTurnover + sebiCharges) * gstPercent;
 
   // Exact 2-decimal rounded breakdown components as per official worked examples
   const roundedBrokerage = Number(brokerage.toFixed(2));

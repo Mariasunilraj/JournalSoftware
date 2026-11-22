@@ -14,9 +14,10 @@ import {
   CartesianGrid,
   Cell,
 } from 'recharts';
-import { formatINR, formatINRCompact } from '../utils/calculations';
+import { formatINR, formatINRCompact, formatIndianDate } from '../utils/calculations';
+import { DEFAULT_INDEX_EXPIRY_DAYS } from '../utils/constants';
 
-export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) {
+export default function CalendarView({ trades, onViewTrade, onOpenTradeModal, settings }) {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDateTrades, setSelectedDateTrades] = useState(null);
 
@@ -27,6 +28,8 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const goToToday = () => setCurrentDate(new Date());
+
+  const expiryDaysConfig = settings?.expiryDays || DEFAULT_INDEX_EXPIRY_DAYS;
 
   // Aggregate trades by date string YYYY-MM-DD
   const dailyData = useMemo(() => {
@@ -121,8 +124,26 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
       }
     });
 
+    const shortLabels = {
+      Monday: 'Mon',
+      Tuesday: 'Tue',
+      Wednesday: 'Wed',
+      Thursday: 'Thu',
+      Friday: 'Fri',
+    };
+
+    const initialLabels = {
+      Monday: 'M',
+      Tuesday: 'T',
+      Wednesday: 'W',
+      Thursday: 'T',
+      Friday: 'F',
+    };
+
     return Object.keys(pnlMap).map((day) => ({
       day,
+      shortDay: shortLabels[day],
+      initial: initialLabels[day],
       pnl: pnlMap[day],
       trades: tradeCount[day],
     }));
@@ -133,19 +154,34 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
 
+  // Helper to test if a day of the week matches any configured index expiry
+  const getExpiryDayIndices = (dayName) => {
+    const matched = [];
+    Object.entries(expiryDaysConfig).forEach(([indexName, expDay]) => {
+      if (expDay && expDay.toLowerCase() === dayName.toLowerCase()) {
+        matched.push(indexName);
+      }
+    });
+    return matched;
+  };
+
+  const tuesdayExpiries = getExpiryDayIndices('Tuesday');
+  const wednesdayExpiries = getExpiryDayIndices('Wednesday');
+  const thursdayExpiries = getExpiryDayIndices('Thursday');
+
   return (
-    <div className="space-y-3 sm:space-y-5 pb-10 w-full min-w-0">
-      {/* Calendar Unified Fintech Box - Small, Simple & 100% Contained */}
+    <div className="space-y-3 sm:space-y-5 pb-32 w-full min-w-0">
+      {/* Calendar Unified Fintech Box */}
       <div className="rounded-2xl bg-[#090909] border border-neutral-800 shadow-2xl p-2.5 sm:p-5 lg:p-6 space-y-2.5 sm:space-y-4 w-full min-w-0 overflow-hidden">
-        {/* Box Top Header: Month Title & Fast Steppers */}
-        <div className="flex items-center justify-between gap-2 w-full min-w-0">
+        {/* Sticky Box Top Header: Month Title & Fast Steppers */}
+        <div className="sticky top-12 sm:top-14 z-20 bg-[#090909]/95 backdrop-blur-md py-2 -mx-2.5 sm:-mx-5 lg:-mx-6 px-2.5 sm:px-5 lg:px-6 border-b border-neutral-800/80 flex items-center justify-between gap-2 w-[calc(100%+1.25rem)] sm:w-[calc(100%+2.5rem)] lg:w-[calc(100%+3rem)]">
           <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-            <div className="p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl bg-neutral-900 border border-neutral-800 text-emerald-400 shrink-0">
-              <CalendarIcon className="w-4 h-4 sm:w-6 sm:h-6" />
+            <div className="p-1.5 sm:p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-emerald-400 shrink-0">
+              <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center space-x-1.5">
-                <h2 className="text-sm sm:text-xl font-black text-white truncate">
+                <h2 className="text-sm sm:text-lg font-black text-white truncate">
                   {monthNames[month]} {year}
                 </h2>
                 <span className="hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
@@ -162,31 +198,31 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
           <div className="flex items-center space-x-1 shrink-0">
             <button
               onClick={prevMonth}
-              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95"
+              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95 min-h-[36px] min-w-[36px] flex items-center justify-center"
               title="Previous Month"
             >
-              <ChevronLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={goToToday}
-              className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] sm:text-sm font-bold border border-neutral-800 transition active:scale-95"
+              className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold border border-neutral-800 transition active:scale-95 min-h-[36px]"
             >
               Today
             </button>
             <button
               onClick={nextMonth}
-              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95"
+              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95 min-h-[36px] min-w-[36px] flex items-center justify-center"
               title="Next Month"
             >
-              <ChevronRight className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Monthly Key Metrics Banner - Symmetrical 3-column micro-strip inside the box */}
+        {/* Monthly Key Metrics Banner */}
         <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full min-w-0">
-          <div className="p-1.5 sm:px-3.5 sm:py-2 rounded-lg sm:rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
-            <span className="text-neutral-500 font-semibold text-[9px] sm:text-xs uppercase tracking-wider block truncate">
+          <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
+            <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
               <span className="sm:hidden">Net:</span>
               <span className="hidden sm:inline">Month Net:</span>
             </span>
@@ -195,8 +231,8 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
               <span className="sm:hidden">{formatINRCompact(monthSummary.totalPnL)}</span>
             </div>
           </div>
-          <div className="p-1.5 sm:px-3.5 sm:py-2 rounded-lg sm:rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
-            <span className="text-neutral-500 font-semibold text-[9px] sm:text-xs uppercase tracking-wider block truncate">
+          <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
+            <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
               <span className="sm:hidden">Win:</span>
               <span className="hidden sm:inline">Win Rate:</span>
             </span>
@@ -204,8 +240,8 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
               {monthSummary.winDayRate}%
             </div>
           </div>
-          <div className="p-1.5 sm:px-3.5 sm:py-2 rounded-lg sm:rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
-            <span className="text-neutral-500 font-semibold text-[9px] sm:text-xs uppercase tracking-wider block truncate">
+          <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-850 text-center sm:text-left min-w-0">
+            <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
               <span className="sm:hidden">Trades:</span>
               <span className="hidden sm:inline">Total Trades:</span>
             </span>
@@ -215,15 +251,24 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
           </div>
         </div>
 
-        {/* Day Name Headers - 7 Columns perfectly aligned */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 text-center text-[10px] sm:text-sm font-bold uppercase tracking-wider text-neutral-500 select-none w-full min-w-0 pt-1">
-          <div className="min-w-0 overflow-hidden text-neutral-600"><span className="hidden sm:inline">Sun</span><span className="sm:hidden">S</span></div>
-          <div className="min-w-0 overflow-hidden"><span className="hidden sm:inline">Mon</span><span className="sm:hidden">M</span></div>
-          <div className="min-w-0 overflow-hidden"><span className="hidden sm:inline">Tue</span><span className="sm:hidden">T</span></div>
-          <div className="min-w-0 overflow-hidden"><span className="hidden sm:inline">Wed</span><span className="sm:hidden">W</span></div>
-          <div className="min-w-0 overflow-hidden text-emerald-400 font-black"><span className="hidden sm:inline">Thu (Expiry)</span><span className="sm:hidden">T*</span></div>
-          <div className="min-w-0 overflow-hidden"><span className="hidden sm:inline">Fri</span><span className="sm:hidden">F</span></div>
-          <div className="min-w-0 overflow-hidden text-neutral-600"><span className="hidden sm:inline">Sat</span><span className="sm:hidden">S</span></div>
+        {/* Day Name Headers - 7 Columns with configurable Expiry Markers */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 text-center text-[10px] sm:text-xs font-bold uppercase tracking-wider text-neutral-400 select-none w-full min-w-0 pt-1">
+          <div className="text-neutral-600"><span className="hidden sm:inline">Sun</span><span className="sm:hidden">S</span></div>
+          <div><span className="hidden sm:inline">Mon</span><span className="sm:hidden">M</span></div>
+          <div className={tuesdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
+            <span className="hidden sm:inline">Tue {tuesdayExpiries.length > 0 ? `(${tuesdayExpiries.join('/')} Exp)` : ''}</span>
+            <span className="sm:hidden">T{tuesdayExpiries.length > 0 ? '*' : ''}</span>
+          </div>
+          <div className={wednesdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
+            <span className="hidden sm:inline">Wed {wednesdayExpiries.length > 0 ? `(${wednesdayExpiries.join('/')} Exp)` : ''}</span>
+            <span className="sm:hidden">W{wednesdayExpiries.length > 0 ? '*' : ''}</span>
+          </div>
+          <div className={thursdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
+            <span className="hidden sm:inline">Thu {thursdayExpiries.length > 0 ? `(${thursdayExpiries.join('/')} Exp)` : ''}</span>
+            <span className="sm:hidden">T{thursdayExpiries.length > 0 ? '*' : ''}</span>
+          </div>
+          <div><span className="hidden sm:inline">Fri</span><span className="sm:hidden">F</span></div>
+          <div className="text-neutral-600"><span className="hidden sm:inline">Sat</span><span className="sm:hidden">S</span></div>
         </div>
 
         {/* Days Cells - Small, Simple, Fits Box Area */}
@@ -233,7 +278,7 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
               return (
                 <div
                   key={cell.id}
-                  className="min-w-0 h-10 xs:h-11 sm:h-20 md:h-24 lg:h-28 rounded sm:rounded-xl bg-black/40 border border-neutral-900/50"
+                  className="min-w-0 h-12 xs:h-14 sm:h-20 md:h-24 lg:h-28 rounded-lg sm:rounded-xl bg-black/40 border border-neutral-900/50"
                 />
               );
             }
@@ -253,7 +298,7 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
                     setSelectedDateTrades({ date: dateStr, stats });
                   }
                 }}
-                className={`min-w-0 h-10 xs:h-11 sm:h-20 md:h-24 lg:h-28 rounded sm:rounded-xl p-0.5 xs:p-1 sm:p-2 flex flex-col justify-between transition-all duration-150 border overflow-hidden select-none ${
+                className={`min-w-0 h-12 xs:h-14 sm:h-20 md:h-24 lg:h-28 rounded-lg sm:rounded-xl p-1 sm:p-2 flex flex-col justify-between transition-all duration-150 border overflow-hidden select-none ${
                   hasTrades
                     ? isProfit
                       ? 'bg-emerald-950/25 border-emerald-500/50 hover:border-emerald-400 cursor-pointer shadow-sm active:scale-95'
@@ -276,12 +321,10 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
                   </span>
                   {hasTrades && (
                     <>
-                      {/* Mobile glowing dot indicator - zero horizontal consumption */}
-                      <span
-                        className={`sm:hidden w-1.5 h-1.5 rounded-full shrink-0 ${
-                          isProfit ? 'bg-emerald-400 shadow-[0_0_4px_#00e676]' : 'bg-rose-500 shadow-[0_0_4px_#ff3b57]'
-                        }`}
-                      />
+                      {/* Mobile count */}
+                      <span className="sm:hidden text-[8px] font-bold text-neutral-400">
+                        {stats.trades.length}t
+                      </span>
                       {/* Tablet / Desktop badge */}
                       <span className="hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">
                         {stats.trades.length} {stats.trades.length === 1 ? 'trade' : 'trades'}
@@ -316,40 +359,45 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
         </div>
 
         {/* Footer Micro-Legend inside the Box */}
-        <div className="pt-2 border-t border-neutral-900 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs text-neutral-500 select-none">
-          <div className="flex items-center space-x-3">
+        <div className="pt-2 border-t border-neutral-900 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs text-neutral-400 select-none">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center space-x-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-              <span className="text-neutral-400">Profit</span>
+              <span className="text-neutral-300">Profit</span>
             </span>
             <span className="flex items-center space-x-1">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
-              <span className="text-neutral-400">Loss</span>
+              <span className="text-neutral-300">Loss</span>
             </span>
             <span className="flex items-center space-x-1">
-              <span className="text-emerald-400 font-bold">T*</span>
-              <span className="text-neutral-400">Expiry (Thu)</span>
+              <span className="text-emerald-400 font-bold">*</span>
+              <span className="text-neutral-300">Expiry (Configurable in Settings)</span>
             </span>
           </div>
-          <span className="text-neutral-500 text-[10px]">Tap active day for trades</span>
+          <span className="text-neutral-400 text-[10px]">Tap active day for trades</span>
         </div>
       </div>
 
-      {/* Weekday Performance Analysis Bar Chart */}
-      <div className="p-3 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl overflow-hidden w-full min-w-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
+      {/* Weekday Performance Analysis Bar Chart (Tightened Height & Reduced Empty Area) */}
+      <div className="p-3 sm:p-4 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl overflow-hidden w-full min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
           <div>
-            <h3 className="text-xs sm:text-base font-bold text-white">Weekday Edge Distribution</h3>
+            <h3 className="text-xs sm:text-sm font-bold text-white">Weekday Edge Distribution</h3>
             <p className="text-[10px] sm:text-xs text-neutral-400">Total Net Profit across trading days of the week</p>
           </div>
           <span className="text-xs text-emerald-400 font-bold hidden sm:inline">Expiry Analysis</span>
         </div>
 
-        <div className="h-36 sm:h-56 w-full min-w-0 overflow-hidden">
+        <div className="h-32 sm:h-44 w-full min-w-0 overflow-hidden">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weekdayData} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}>
+            <BarChart data={weekdayData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-              <XAxis dataKey="day" stroke="#525252" tick={{ fontSize: 10 }} />
+              <XAxis
+                dataKey="shortDay"
+                stroke="#525252"
+                tick={{ fontSize: 10 }}
+                tickFormatter={(v, i) => (typeof window !== 'undefined' && window.innerWidth < 450 ? weekdayData[i]?.initial || v : v)}
+              />
               <YAxis
                 stroke="#525252"
                 tick={{ fontSize: 9 }}
@@ -360,7 +408,7 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
                   if (active && payload && payload.length) {
                     const item = payload[0].payload;
                     return (
-                      <div className="bg-black p-2 rounded-xl border border-neutral-800 text-xs">
+                      <div className="bg-black p-2.5 rounded-xl border border-neutral-800 text-xs shadow-xl">
                         <div className="font-bold text-white">{item.day}</div>
                         <div className="text-neutral-400">Executed Trades: {item.trades}</div>
                         <div className="mt-1">
@@ -389,7 +437,7 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-neutral-800 bg-black">
               <div>
                 <h3 className="text-base font-bold text-white">
-                  Trades on {selectedDateTrades.date}
+                  Trades on {formatIndianDate(selectedDateTrades.date)}
                 </h3>
                 <div className="text-xs text-neutral-400 mt-0.5">
                   Day Net Profit:{' '}
@@ -401,7 +449,7 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
               </div>
               <button
                 onClick={() => setSelectedDateTrades(null)}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800"
+                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 ✕
               </button>
@@ -418,40 +466,21 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal }) 
                   className="p-3 sm:p-3.5 rounded-xl bg-black hover:bg-neutral-900 border border-neutral-800 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition active:scale-98"
                 >
                   <div>
-                    <div className="flex items-center space-x-2 font-bold text-white">
-                      <span>{t.symbol}</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                        t.tradeType === 'Put' || t.optionType === 'PE' || t.symbol?.includes('PE')
-                          ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                          : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                      }`}>
-                        {(t.tradeType || (t.optionType === 'PE' ? 'PUT' : 'CALL')).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-neutral-400 mt-1">
-                      {t.entryTime} - {t.exitTime} • Strategy: {t.strategy || 'Discretionary'} • {t.quantity} Qty
+                    <div className="font-bold text-white text-sm">{t.symbol}</div>
+                    <div className="text-neutral-400 text-xs mt-0.5">
+                      {t.entryTime} → {t.exitTime} • {t.quantity} qty
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between sm:block sm:text-right pt-1 sm:pt-0 border-t sm:border-0 border-neutral-800">
-                    <div className={`text-sm font-black ${Number(t.netPnL) >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                  <div className="text-right">
+                    <div className={`font-black text-sm ${t.netPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
                       {formatINR(t.netPnL)}
                     </div>
-                    <div className="text-[10px] text-neutral-500">
-                      Charges: ₹{t.charges}
+                    <div className="text-neutral-500 text-[10px]">
+                      {t.charges ? `Charges ${formatINR(t.charges)}` : ''}
                     </div>
                   </div>
                 </div>
               ))}
-            </div>
-
-            <div className="p-3 sm:p-4 bg-black border-t border-neutral-800 flex justify-end">
-              <button
-                onClick={() => setSelectedDateTrades(null)}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold active:scale-95"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>

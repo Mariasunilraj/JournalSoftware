@@ -69,16 +69,21 @@ export function calculateTradePnL(trade) {
 }
 
 /**
- * Format Indian Rupee currency (e.g. ₹1,50,000 or -₹3,420)
+ * Format Indian Rupee currency (e.g. ₹1,50,000.00 or -₹3,420.50)
+ * Strictly guarantees clean ₹0.00 (never +₹0.00 or -₹0.00)
  */
 export function formatINR(val, includeSymbol = true) {
   if (val === undefined || val === null || isNaN(val)) return includeSymbol ? '₹0.00' : '0.00';
   const num = Number(val);
-  const isNegative = num < 0;
-  const absNum = Math.abs(num);
+  const fixed = Math.abs(num).toFixed(2);
 
-  // Indian number formatting regex
-  const parts = absNum.toFixed(2).split('.');
+  // Eliminate negative zero or sub-cent zero edge cases
+  if (fixed === '0.00') {
+    return includeSymbol ? '₹0.00' : '0.00';
+  }
+
+  const isNegative = num < 0;
+  const parts = fixed.split('.');
   let lastThree = parts[0].substring(parts[0].length - 3);
   const otherNumbers = parts[0].substring(0, parts[0].length - 3);
   if (otherNumbers !== '') {
@@ -88,6 +93,55 @@ export function formatINR(val, includeSymbol = true) {
 
   const prefix = includeSymbol ? (isNegative ? '-₹' : '₹') : (isNegative ? '-' : '');
   return `${prefix}${formatted}`;
+}
+
+/**
+ * Standardize Indian Date Display (DD-MM-YYYY)
+ * Accepts ISO string (YYYY-MM-DD or full timestamp) or date object and outputs DD-MM-YYYY
+ */
+export function formatIndianDate(dateInput) {
+  if (!dateInput) return '-';
+  try {
+    const str = String(dateInput).trim();
+    // If already in DD-MM-YYYY or DD/MM/YYYY
+    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(str)) {
+      return str.replace(/\//g, '-');
+    }
+    // If ISO YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const parts = str.slice(0, 10).split('-');
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return String(dateInput);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch (e) {
+    return String(dateInput);
+  }
+}
+
+/**
+ * Parses user input date into ISO format (YYYY-MM-DD) for uniform internal storage
+ */
+export function parseToISODate(dateStr) {
+  if (!dateStr) return new Date().toISOString().slice(0, 10);
+  const str = String(dateStr).trim();
+  // If DD-MM-YYYY or DD/MM/YYYY
+  const ddmmyyyy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (ddmmyyyy) {
+    const day = ddmmyyyy[1].padStart(2, '0');
+    const month = ddmmyyyy[2].padStart(2, '0');
+    const year = ddmmyyyy[3];
+    return `${year}-${month}-${day}`;
+  }
+  // If already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  return str.slice(0, 10);
 }
 
 export function formatPercent(val) {
