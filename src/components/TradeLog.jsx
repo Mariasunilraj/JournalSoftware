@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -9,6 +9,8 @@ import {
   Play,
   Target,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   SlidersHorizontal,
   FileSpreadsheet,
   AlertTriangle,
@@ -36,6 +38,26 @@ export default function TradeLog({
   const [showQuickEntry, setShowQuickEntry] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [userEditedCharges, setUserEditedCharges] = useState(false);
+
+  // Exact 3-entry scroll tracking
+  const scrollContainerRef = useRef(null);
+  const [currentVisibleIndex, setCurrentVisibleIndex] = useState(0);
+
+  const CARD_HEIGHT = 120; // px
+  const CARD_GAP = 10; // px
+  const STEP = CARD_HEIGHT + CARD_GAP; // 130px
+
+  const handleScroll = (e) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    const idx = Math.round(scrollTop / STEP);
+    setCurrentVisibleIndex(idx);
+  };
+
+  const handleScrollStep = (direction) => {
+    if (!scrollContainerRef.current) return;
+    const delta = direction === 'down' ? STEP : -STEP;
+    scrollContainerRef.current.scrollBy({ top: delta, behavior: 'smooth' });
+  };
 
   // Quick form state with Lots, Lot size, SL, Target, Expiry, Strike
   const [quickForm, setQuickForm] = useState({
@@ -444,16 +466,6 @@ export default function TradeLog({
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
   };
-
-  const handleToggleSelectAll = () => {
-    if (selectedTradeIds.length === filteredTrades.length) {
-      setSelectedTradeIds([]);
-    } else {
-      setSelectedTradeIds(filteredTrades.map((t) => t.id));
-    }
-  };
-
-  const isAllSelected = filteredTrades.length > 0 && selectedTradeIds.length === filteredTrades.length;
 
   return (
     <div className="space-y-3.5 sm:space-y-4 pb-32 max-w-4xl mx-auto w-full min-w-0">
@@ -893,7 +905,7 @@ export default function TradeLog({
               </div>
             </div>
 
-            {/* View Switcher: Cards vs Table on Desktop */}
+            {/* View Switcher: Cards vs Table */}
             <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between text-xs">
               <span className="text-neutral-400 text-[11px]">Display Mode:</span>
               <div className="flex items-center space-x-1 bg-black p-0.5 rounded-lg border border-neutral-800">
@@ -947,9 +959,9 @@ export default function TradeLog({
         </div>
       )}
 
-      {/* 4. Trade Cards List (Exact Signature Design from Reference Mockup) */}
+      {/* 4. Trade Cards List — Exactly 3 Entries Visible with Snap-by-Snap Scrolling */}
       {viewMode === 'cards' ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {filteredTrades.length === 0 ? (
             <div className="p-8 text-center rounded-2xl bg-[#0c0e10] border border-neutral-800/80 text-neutral-400 space-y-2">
               <div className="text-sm font-bold text-white">
@@ -962,123 +974,182 @@ export default function TradeLog({
               </p>
             </div>
           ) : (
-            filteredTrades.map((trade) => {
-              const isProfit = Number(trade.netPnL) >= 0;
-              const tradeType = getTradeType(trade);
-              const isCall = tradeType === 'Call';
-              const isSelected = selectedTradeIds.includes(trade.id);
-              const lotCount = trade.lots || Math.round(Number(trade.quantity) / (trade.lotSize || 25)) || 1;
+            <>
+              {/* Stepper Status Bar (Showing Entries X–Y of N with Up/Down Controls) */}
+              <div className="flex items-center justify-between px-1 text-xs text-neutral-400">
+                <span className="font-semibold text-[11px] text-neutral-400">
+                  Showing entries{' '}
+                  <strong className="text-white font-bold">
+                    {currentVisibleIndex + 1}
+                    –
+                    {Math.min(currentVisibleIndex + 3, filteredTrades.length)}
+                  </strong>{' '}
+                  of <strong className="text-emerald-400 font-bold">{filteredTrades.length}</strong>
+                </span>
 
-              return (
-                <div
-                  key={trade.id}
-                  onClick={() => onViewTrade(trade)}
-                  className={`relative bg-[#0c0e10] border rounded-2xl p-4 transition-all duration-150 cursor-pointer hover:border-neutral-700 active:scale-[0.99] shadow-lg overflow-hidden ${
-                    isSelected ? 'border-emerald-500/80 bg-emerald-500/[0.04]' : 'border-neutral-800/80'
-                  }`}
-                >
-                  {/* Signature Left Neon Green Glowing Edge Accent */}
-                  <div className="absolute left-0 top-3 bottom-3 w-1 bg-[#00ff66] rounded-r shadow-[0_0_8px_#00ff66]" />
+                {filteredTrades.length > 3 && (
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      disabled={currentVisibleIndex <= 0}
+                      onClick={() => handleScrollStep('up')}
+                      className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 disabled:opacity-25 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 flex items-center justify-center transition active:scale-95"
+                      title="Scroll Up (Previous Entry)"
+                      aria-label="Previous Entry"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={currentVisibleIndex >= filteredTrades.length - 3}
+                      onClick={() => handleScrollStep('down')}
+                      className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 disabled:opacity-25 disabled:cursor-not-allowed hover:bg-neutral-800 text-neutral-200 flex items-center justify-center transition active:scale-95"
+                      title="Scroll Down (Next Entry)"
+                      aria-label="Next Entry"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
 
-                  {/* Row 1: Option Badge + Symbol on Left, P&L Pill + Chevron on Right */}
-                  <div className="flex items-center justify-between gap-2 pl-2">
-                    <div className="flex items-center space-x-2 min-w-0">
-                      {/* Selection checkbox if multi-select active */}
-                      {selectedTradeIds.length > 0 && (
-                        <div onClick={(e) => toggleSelectTrade(trade.id, e)} className="shrink-0 mr-1">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {}}
-                            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-emerald-500 cursor-pointer"
-                          />
+              {/* Exact 3-Entry Scroll Container (Snaps card by card, never cuts off an entry) */}
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="overflow-y-auto snap-y snap-mandatory scroll-smooth space-y-2.5 rounded-2xl scrollbar-none touch-pan-y overscroll-contain pr-0.5"
+                style={{
+                  height: filteredTrades.length <= 3
+                    ? `${filteredTrades.length * CARD_HEIGHT + Math.max(0, filteredTrades.length - 1) * CARD_GAP}px`
+                    : `${3 * CARD_HEIGHT + 2 * CARD_GAP}px`, // exactly 380px fits 3 cards without cutting any entry in half
+                  scrollSnapType: 'y mandatory',
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                {filteredTrades.map((trade) => {
+                  const isProfit = Number(trade.netPnL) >= 0;
+                  const tradeType = getTradeType(trade);
+                  const isCall = tradeType === 'Call';
+                  const isSelected = selectedTradeIds.includes(trade.id);
+                  const lotCount = trade.lots || Math.round(Number(trade.quantity) / (trade.lotSize || 25)) || 1;
+
+                  return (
+                    <div
+                      key={trade.id}
+                      onClick={() => onViewTrade(trade)}
+                      className={`snap-start snap-always shrink-0 relative bg-[#0c0e10] border rounded-2xl p-3 sm:p-3.5 transition-all duration-150 cursor-pointer hover:border-neutral-700 active:scale-[0.99] shadow-lg overflow-hidden flex flex-col justify-between select-none ${
+                        isSelected ? 'border-emerald-500/80 bg-emerald-500/[0.04]' : 'border-neutral-800/80'
+                      }`}
+                      style={{
+                        height: `${CARD_HEIGHT}px`,
+                        minHeight: `${CARD_HEIGHT}px`,
+                        maxHeight: `${CARD_HEIGHT}px`,
+                      }}
+                    >
+                      {/* Signature Left Neon Green Glowing Edge Accent */}
+                      <div className="absolute left-0 top-3 bottom-3 w-1 bg-[#00ff66] rounded-r shadow-[0_0_8px_#00ff66]" />
+
+                      {/* Row 1: Option Badge + Symbol on Left, P&L Pill + Chevron on Right */}
+                      <div className="flex items-center justify-between gap-2 pl-2">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          {/* Selection checkbox if multi-select active */}
+                          {selectedTradeIds.length > 0 && (
+                            <div onClick={(e) => toggleSelectTrade(trade.id, e)} className="shrink-0 mr-1">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-900 text-emerald-500 cursor-pointer"
+                              />
+                            </div>
+                          )}
+
+                          {/* CALL / PUT Badge */}
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider uppercase shrink-0 leading-none ${
+                              isCall ? 'bg-[#064e27] text-white' : 'bg-[#3b1112] text-white'
+                            }`}
+                          >
+                            {isCall ? 'CALL' : 'PUT'}
+                          </span>
+
+                          {/* Contract Symbol */}
+                          <h3 className="text-xs sm:text-sm font-black text-white truncate tracking-tight leading-none">
+                            {trade.symbol}
+                          </h3>
                         </div>
-                      )}
 
-                      {/* CALL / PUT Badge */}
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-black tracking-wide uppercase shrink-0 ${
-                          isCall ? 'bg-[#064e27] text-white' : 'bg-[#3b1112] text-white'
-                        }`}
-                      >
-                        {isCall ? 'CALL' : 'PUT'}
-                      </span>
-
-                      {/* Contract Symbol */}
-                      <h3 className="text-sm sm:text-base font-black text-white truncate tracking-tight">
-                        {trade.symbol}
-                      </h3>
-                    </div>
-
-                    {/* Right: P&L Pill & Chevron */}
-                    <div className="flex items-center space-x-2 shrink-0">
-                      <div
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center space-x-1 ${
-                          isProfit
-                            ? 'bg-[#042f1a] border border-[#16a34a]/60 text-[#00ff7f]'
-                            : 'bg-[#3b0d0c] border border-[#991b1b]/60 text-[#ff6b6b]'
-                        }`}
-                      >
-                        <span>{formatINR(Math.abs(trade.netPnL))}</span>
-                        {isProfit ? (
-                          <TrendingUp className="w-3.5 h-3.5 inline ml-0.5 text-[#00ff7f]" />
-                        ) : (
-                          <TrendingDown className="w-3.5 h-3.5 inline ml-0.5 text-[#ff6b6b]" />
-                        )}
+                        {/* Right: P&L Pill & Chevron */}
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <div
+                            className={`px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-bold flex items-center space-x-0.5 leading-none ${
+                              isProfit
+                                ? 'bg-[#042f1a] border border-[#16a34a]/60 text-[#00ff7f]'
+                                : 'bg-[#3b0d0c] border border-[#991b1b]/60 text-[#ff6b6b]'
+                            }`}
+                          >
+                            <span>{formatINR(Math.abs(trade.netPnL))}</span>
+                            {isProfit ? (
+                              <TrendingUp className="w-3 h-3 inline ml-0.5 text-[#00ff7f]" />
+                            ) : (
+                              <TrendingDown className="w-3 h-3 inline ml-0.5 text-[#ff6b6b]" />
+                            )}
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                        </div>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-neutral-500 shrink-0" />
-                    </div>
-                  </div>
 
-                  {/* Row 2: Date & Time with Calendar Icon */}
-                  <div className="flex items-center space-x-1.5 text-xs text-neutral-400 mt-2 pl-2 font-medium">
-                    <Calendar className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                    <span>
-                      {formatIndianDate(trade.date)} • {trade.entryTime || '09:30'}
-                    </span>
-                  </div>
-
-                  {/* Row 3: 3-Column Execution Footer with Vertical Dividers */}
-                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-neutral-800/80 pl-2">
-                    {/* Column 1: Qty */}
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-1 text-[11px] text-neutral-400 font-medium mb-0.5">
-                        <Box className="w-3 h-3 text-neutral-500 shrink-0" />
-                        <span>Qty</span>
-                      </div>
-                      <div className="text-xs sm:text-sm font-bold text-white truncate">
-                        {trade.quantity}{' '}
-                        <span className="text-neutral-400 font-normal text-[11px]">
-                          ({lotCount}L)
+                      {/* Row 2: Date & Time with Calendar Icon */}
+                      <div className="flex items-center space-x-1.5 text-[11px] text-neutral-400 pl-2 font-medium leading-none">
+                        <Calendar className="w-3 h-3 text-neutral-500 shrink-0" />
+                        <span>
+                          {formatIndianDate(trade.date)} • {trade.entryTime || '09:30'}
                         </span>
                       </div>
-                    </div>
 
-                    {/* Column 2: Execution */}
-                    <div className="min-w-0 border-l border-neutral-800/80 pl-2">
-                      <div className="flex items-center space-x-1 text-[11px] text-neutral-400 font-medium mb-0.5">
-                        <Play className="w-3 h-3 text-neutral-500 shrink-0" />
-                        <span>Execution</span>
-                      </div>
-                      <div className="text-xs sm:text-sm font-semibold text-neutral-200 truncate">
-                        ₹{trade.entryPrice} → ₹{trade.exitPrice}
-                      </div>
-                    </div>
+                      {/* Row 3: 3-Column Execution Footer with Vertical Dividers */}
+                      <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-neutral-800/80 pl-2">
+                        {/* Column 1: Qty */}
+                        <div className="min-w-0">
+                          <div className="flex items-center space-x-1 text-[10px] text-neutral-400 font-medium mb-0.5 leading-none">
+                            <Box className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
+                            <span>Qty</span>
+                          </div>
+                          <div className="text-[11px] sm:text-xs font-bold text-white truncate leading-none">
+                            {trade.quantity}{' '}
+                            <span className="text-neutral-400 font-normal text-[10px]">
+                              ({lotCount}L)
+                            </span>
+                          </div>
+                        </div>
 
-                    {/* Column 3: Strategy */}
-                    <div className="min-w-0 border-l border-neutral-800/80 pl-2">
-                      <div className="flex items-center space-x-1 text-[11px] text-neutral-400 font-medium mb-0.5">
-                        <Target className="w-3 h-3 text-neutral-500 shrink-0" />
-                        <span>Strategy</span>
-                      </div>
-                      <div className="text-xs sm:text-sm font-bold text-white uppercase truncate">
-                        {trade.strategy || 'BREAKOUT'}
+                        {/* Column 2: Execution */}
+                        <div className="min-w-0 border-l border-neutral-800/80 pl-2">
+                          <div className="flex items-center space-x-1 text-[10px] text-neutral-400 font-medium mb-0.5 leading-none">
+                            <Play className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
+                            <span>Execution</span>
+                          </div>
+                          <div className="text-[11px] sm:text-xs font-semibold text-neutral-200 truncate leading-none">
+                            ₹{trade.entryPrice} → ₹{trade.exitPrice}
+                          </div>
+                        </div>
+
+                        {/* Column 3: Strategy */}
+                        <div className="min-w-0 border-l border-neutral-800/80 pl-2">
+                          <div className="flex items-center space-x-1 text-[10px] text-neutral-400 font-medium mb-0.5 leading-none">
+                            <Target className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
+                            <span>Strategy</span>
+                          </div>
+                          <div className="text-[11px] sm:text-xs font-bold text-white uppercase truncate leading-none">
+                            {trade.strategy || 'BREAKOUT'}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       ) : (
