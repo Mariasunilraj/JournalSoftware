@@ -184,6 +184,8 @@ export default function DataManagementView({
         symbol: t.symbol || '',
         exchange: t.exchange || 'NSE',
         exchangeRates: settings?.exchangeRates || DEFAULT_EXCHANGE_RATES,
+        date: t.date,
+        tradeDate: t.date,
       });
 
       const gross = dir === 'Short' ? (entry - exit) * qty : (exit - entry) * qty;
@@ -427,7 +429,7 @@ export default function DataManagementView({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div className="p-3.5 rounded-xl bg-black/50 border border-white/[0.08]">
                   <label className="text-neutral-400 text-[11px] uppercase font-bold block mb-1">
-                    STT (Sell Side %)
+                    Options STT (Sell Side %)
                   </label>
                   <input
                     type="number"
@@ -442,7 +444,27 @@ export default function DataManagementView({
                     }
                     className="w-full bg-[#08090b] border border-white/[0.12] focus:border-[#00e676] rounded-xl px-3 py-2 text-white font-bold text-sm focus:outline-none focus:ring-1 focus:ring-[#00e676]"
                   />
-                  <span className="text-[10px] text-neutral-500 mt-1 block">Govt STT on option sell premium</span>
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Govt STT on option sell premium (0.15%)</span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-black/50 border border-white/[0.08]">
+                  <label className="text-neutral-400 text-[11px] uppercase font-bold block mb-1">
+                    Futures STT (Sell Side %)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={ratesForm.NSE?.futuresSttSellRate ?? 0.05}
+                    onChange={(e) =>
+                      setRatesForm({
+                        ...ratesForm,
+                        NSE: { ...ratesForm.NSE, futuresSttSellRate: parseFloat(e.target.value) || 0 },
+                        BSE: { ...ratesForm.BSE, futuresSttSellRate: parseFloat(e.target.value) || 0 },
+                      })
+                    }
+                    className="w-full bg-[#08090b] border border-white/[0.12] focus:border-[#00e676] rounded-xl px-3 py-2 text-white font-bold text-sm focus:outline-none focus:ring-1 focus:ring-[#00e676]"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Govt STT on futures sell turnover (0.05%)</span>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-black/50 border border-white/[0.08]">

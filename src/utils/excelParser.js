@@ -385,6 +385,7 @@ function parsePreAggregatedRows(rows, options = {}) {
         entryPrice,
         exitPrice,
         quantity,
+        date,
       });
 
       const grossPnL = realizedPnL !== 0
@@ -558,6 +559,7 @@ function matchSeparateLegs(rows) {
         entryPrice: avgBuyPrice,
         exitPrice: avgSellPrice,
         quantity: matchQty,
+        date: tradeDate,
       });
 
       const grossPnL = Number(((avgSellPrice - avgBuyPrice) * matchQty).toFixed(2));

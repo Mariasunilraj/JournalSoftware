@@ -252,13 +252,14 @@ export default function TradeLog({
 
         if (field !== 'charges' && !userEditedCharges) {
           const breakdown = calculateIndianCharges({
-            segment: 'Options',
-            direction: 'Long',
-            optionAction: 'Buy',
+            segment: updated.segment || 'Options',
+            direction: updated.direction || 'Long',
+            optionAction: updated.optionAction || 'Buy',
             entryPrice: entry,
             exitPrice: exit,
             quantity: qty,
             symbol: updated.symbol,
+            date: updated.date,
           });
           chgs = breakdown.totalCharges;
           updated.charges = chgs;
@@ -299,13 +300,14 @@ export default function TradeLog({
 
     if ((charges === 0 || !userEditedCharges) && entry > 0 && exit > 0 && qty > 0) {
       const breakdown = calculateIndianCharges({
-        segment: 'Options',
-        direction: 'Long',
-        optionAction: 'Buy',
+        segment: quickForm.segment || 'Options',
+        direction: quickForm.direction || 'Long',
+        optionAction: quickForm.optionAction || 'Buy',
         entryPrice: entry,
         exitPrice: exit,
         quantity: qty,
         symbol: quickForm.symbol,
+        date: quickForm.date,
       });
       charges = breakdown.totalCharges;
     }

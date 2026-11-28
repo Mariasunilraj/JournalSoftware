@@ -1,4 +1,36 @@
-import { DEFAULT_EXCHANGE_RATES } from './constants';
+import { DEFAULT_EXCHANGE_RATES, HISTORICAL_STT_SCHEDULE } from './constants.js';
+
+/**
+ * Resolves date-effective statutory STT rate for futures
+ * Effective 1 April 2026: 0.05%
+ * Prior to 1 April 2026: 0.02%
+ */
+export function getEffectiveFuturesSttRate(tradeDate, configuredRate = null) {
+  // If user explicitly configured a custom rate other than default presets (0.02 or 0.05), honor it
+  if (
+    configuredRate !== null &&
+    configuredRate !== undefined &&
+    configuredRate !== 0.02 &&
+    configuredRate !== 0.05
+  ) {
+    return Number(configuredRate);
+  }
+
+  if (tradeDate) {
+    try {
+      const d = new Date(tradeDate);
+      if (!isNaN(d.getTime())) {
+        const iso = d.toISOString().slice(0, 10);
+        if (iso < '2026-04-01') {
+          return 0.02; // Historical rate prior to 1 April 2026
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Statutory rate effective 1 April 2026 onwards
+  return typeof configuredRate === 'number' && configuredRate > 0 ? configuredRate : 0.05;
+}
 
 /**
  * Accurate Indian Brokerage and Statutory Charges Calculator
@@ -17,8 +49,11 @@ export function calculateIndianCharges({
   exchange = 'NSE',
   symbol = '',
   exchangeRates = null,
+  rates: ratesAlias = null,
+  date = null,
+  tradeDate = null,
 }) {
-  const rates = exchangeRates || DEFAULT_EXCHANGE_RATES;
+  const rates = exchangeRates || ratesAlias || DEFAULT_EXCHANGE_RATES;
   const effectiveBrokerage = Number(brokeragePerOrder) || Number(rates?.brokeragePerOrder) || 20;
 
   // Detect exchange from symbol or underlying if not explicitly BSE
@@ -78,7 +113,8 @@ export function calculateIndianCharges({
   } else if (segment === 'Futures') {
     // Futures: ₹20 flat per order = ₹40
     brokerage = effectiveBrokerage * 2;
-    const sttRate = (exchangeConfig.futuresSttSellRate ?? 0.02) / 100;
+    const baseSttRate = getEffectiveFuturesSttRate(tradeDate || date, exchangeConfig.futuresSttSellRate);
+    const sttRate = (baseSttRate ?? 0.05) / 100;
     stt = sellTurnover * sttRate;
     const stampRate = (exchangeConfig.futuresStampDutyBuyRate ?? 0.002) / 100;
     stampDuty = buyTurnover * stampRate;

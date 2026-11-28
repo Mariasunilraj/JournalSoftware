@@ -25,7 +25,7 @@ A personal trading records and analytics software built specifically for Indian 
 ### 3. Accurate Indian Statutory Charges Calculator
 Built-in automated calculator applying updated Indian tax & turnover regulations:
 - **Brokerage**: Configurable (e.g., flat ₹20/order or 0.03% for intraday equity).
-- **STT (Securities Transaction Tax)**: 0.1% on options sell premium turnover; 0.02% on futures sell turnover; 0.025% on intraday equity sell; 0.1% on delivery buy/sell.
+- **STT (Securities Transaction Tax)**: 0.15% on options sell premium turnover; 0.05% on futures sell turnover (effective 1 April 2026; 0.02% prior); 0.025% on intraday equity sell; 0.1% on delivery buy/sell.
 - **Exchange Turnover Charges**: NSE cash (~0.00297%), NSE Futures (~0.00173%), NSE Options (~0.03503% on premium).
 - **SEBI Charges**: ₹10 per crore (0.0001%).
 - **Stamp Duty**: Buy side state stamp charges.

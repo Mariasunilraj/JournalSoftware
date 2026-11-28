@@ -72,7 +72,7 @@ export const RULE_VIOLATIONS = [
 ];
 
 export const DEFAULT_EXCHANGE_RATES = {
-  lastUpdated: '2026-11-20',
+  lastUpdated: '2026-11-28',
   brokeragePerOrder: 20, // flat ₹20 per executed order
   gstRate: 18, // 18% on (Brokerage + Exchange Txn + SEBI)
   sebiTurnoverRate: 0.000001, // ₹10 per crore (0.0001%)
@@ -82,7 +82,7 @@ export const DEFAULT_EXCHANGE_RATES = {
     optionsSttSellRate: 0.15, // % on option sell premium
     optionsStampDutyBuyRate: 0.003, // % on option buy premium
     futuresTxnRate: 0.00173, // % on futures turnover
-    futuresSttSellRate: 0.02, // % on futures sell turnover
+    futuresSttSellRate: 0.05, // % on futures sell turnover (effective 1 April 2026)
     futuresStampDutyBuyRate: 0.002, // % on futures buy turnover
   },
   BSE: {
@@ -91,10 +91,28 @@ export const DEFAULT_EXCHANGE_RATES = {
     optionsSttSellRate: 0.15, // % on option sell premium
     optionsStampDutyBuyRate: 0.003, // % on option buy premium
     futuresTxnRate: 0.00173, // % on futures turnover
-    futuresSttSellRate: 0.02, // % on futures sell turnover
+    futuresSttSellRate: 0.05, // % on futures sell turnover (effective 1 April 2026)
     futuresStampDutyBuyRate: 0.002, // % on futures buy turnover
   },
 };
+
+/**
+ * Historical Statutory STT Schedule for Date-Effective Precision
+ * Effective 1 April 2026: Futures STT is 0.05% on sell turnover, Options STT is 0.15% on sell premium turnover
+ * Prior to 1 April 2026: Futures STT was 0.02% on sell turnover
+ */
+export const HISTORICAL_STT_SCHEDULE = [
+  {
+    effectiveDate: '2026-04-01',
+    futuresSttSellRate: 0.05,
+    optionsSttSellRate: 0.15,
+  },
+  {
+    effectiveDate: '1970-01-01',
+    futuresSttSellRate: 0.02,
+    optionsSttSellRate: 0.10,
+  },
+];
 
 export const DEFAULT_INDEX_EXPIRY_DAYS = {
   NIFTY: 'Tuesday',
