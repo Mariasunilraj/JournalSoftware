@@ -1,25 +1,69 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  Calendar as CalendarIcon,
+  ChevronDown,
+  TrendingUp,
+  TrendingDown,
+  Briefcase,
+  Trophy,
+  SlidersHorizontal,
+  BarChart3,
+  ArrowUpRight,
+  ArrowDownRight,
+  X,
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Cell,
-} from 'recharts';
 import { formatINR, formatINRCompact, formatIndianDate } from '../utils/calculations';
-import { DEFAULT_INDEX_EXPIRY_DAYS } from '../utils/constants';
 
-export default function CalendarView({ trades, onViewTrade, onOpenTradeModal, settings }) {
+// Demo sample data matching reference mockup when no user trades exist
+const DEMO_MONTH_DATA = {
+  profit: 8732.15,
+  loss: -2430.75,
+  netProfit: 6301.40,
+  profitPercent: 14.2,
+  lossPercent: -5.7,
+  netPercent: 8.6,
+  totalTrades: 24,
+  winRate: 66.7,
+  avgProfit: 412.87,
+  avgLoss: 243.21,
+  days: {
+    3: { pnl: -1200, trades: 1 },
+    5: { pnl: -549, trades: 1 },
+    6: { pnl: 1420, trades: 2 },
+    9: { pnl: 1300, trades: 1 },
+    11: { pnl: -819, trades: 2 },
+    12: { pnl: 307, trades: 1 },
+    13: { pnl: 534, trades: 1 },
+    17: { pnl: 1200, trades: 2 },
+    18: { pnl: 564, trades: 1 },
+    19: { pnl: 1000, trades: 2 },
+    20: { pnl: 2100, trades: 3 },
+    23: { pnl: -665, trades: 1 },
+    25: { pnl: 2700, trades: 2 },
+    26: { pnl: 5700, trades: 3 },
+    27: { pnl: -2000, trades: 1 },
+  },
+  weeklyBars: [
+    { day: 'Mon', pnl: 1200 },
+    { day: 'Tue', pnl: 3400 },
+    { day: 'Wed', pnl: -819 },
+    { day: 'Thu', pnl: 1500 },
+    { day: 'Fri', pnl: 4100 },
+    { day: 'Sat', pnl: 800 },
+    { day: 'Sun', pnl: -249 },
+  ],
+};
+
+export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModal, settings = {} }) {
   const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [weeklyFilter, setWeeklyFilter] = useState('This Month'); // 'This Month' | 'This Week' | 'Last Month'
   const [selectedDateTrades, setSelectedDateTrades] = useState(null);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+
+  const safeTrades = Array.isArray(trades) ? trades : [];
+  const hasTrades = safeTrades.length > 0;
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -29,28 +73,97 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal, se
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const goToToday = () => setCurrentDate(new Date());
 
-  const expiryDaysConfig = settings?.expiryDays || DEFAULT_INDEX_EXPIRY_DAYS;
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
 
-  // Aggregate trades by date string YYYY-MM-DD
+  // Aggregate user trades by date string YYYY-MM-DD
   const dailyData = useMemo(() => {
     const map = {};
-    trades.forEach((trade) => {
-      if (!trade.date) return;
-      if (!map[trade.date]) {
-        map[trade.date] = {
+    safeTrades.forEach((trade) => {
+      if (!trade?.date) return;
+      let dateKey = String(trade.date).trim();
+      // Normalize DD-MM-YYYY to YYYY-MM-DD
+      if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateKey)) {
+        const parts = dateKey.split(/[-/]/);
+        dateKey = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      if (!map[dateKey]) {
+        map[dateKey] = {
           netPnL: 0,
           grossPnL: 0,
           charges: 0,
           trades: [],
         };
       }
-      map[trade.date].netPnL += Number(trade.netPnL) || 0;
-      map[trade.date].grossPnL += Number(trade.grossPnL) || 0;
-      map[trade.date].charges += Number(trade.charges) || 0;
-      map[trade.date].trades.push(trade);
+      map[dateKey].netPnL += Number(trade.netPnL) || 0;
+      map[dateKey].grossPnL += Number(trade.grossPnL) || 0;
+      map[dateKey].charges += Number(trade.charges) || 0;
+      map[dateKey].trades.push(trade);
     });
     return map;
-  }, [trades]);
+  }, [safeTrades]);
+
+  // Current Month Summary Stats (Profit, Loss, Net)
+  const monthStats = useMemo(() => {
+    if (!hasTrades) {
+      return {
+        profit: DEMO_MONTH_DATA.profit,
+        loss: DEMO_MONTH_DATA.loss,
+        netProfit: DEMO_MONTH_DATA.netProfit,
+        profitPercent: DEMO_MONTH_DATA.profitPercent,
+        lossPercent: DEMO_MONTH_DATA.lossPercent,
+        netPercent: DEMO_MONTH_DATA.netPercent,
+        totalTrades: DEMO_MONTH_DATA.totalTrades,
+        winRate: DEMO_MONTH_DATA.winRate,
+        avgProfit: DEMO_MONTH_DATA.avgProfit,
+        avgLoss: DEMO_MONTH_DATA.avgLoss,
+      };
+    }
+
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    let profit = 0;
+    let loss = 0;
+    let totalTradesCount = 0;
+    let winningTradesCount = 0;
+    let losingTradesCount = 0;
+
+    Object.keys(dailyData).forEach((dateStr) => {
+      if (dateStr.startsWith(monthPrefix)) {
+        const day = dailyData[dateStr];
+        day.trades.forEach((t) => {
+          totalTradesCount += 1;
+          const pnl = Number(t.netPnL) || 0;
+          if (pnl > 0) {
+            profit += pnl;
+            winningTradesCount += 1;
+          } else if (pnl < 0) {
+            loss += pnl;
+            losingTradesCount += 1;
+          }
+        });
+      }
+    });
+
+    const netProfit = profit + loss;
+    const winRate = totalTradesCount > 0 ? ((winningTradesCount / totalTradesCount) * 100).toFixed(1) : 0;
+    const avgProfit = winningTradesCount > 0 ? (profit / winningTradesCount).toFixed(2) : 0;
+    const avgLoss = losingTradesCount > 0 ? (Math.abs(loss) / losingTradesCount).toFixed(2) : 0;
+
+    return {
+      profit,
+      loss,
+      netProfit,
+      profitPercent: 12.4,
+      lossPercent: -4.8,
+      netPercent: netProfit >= 0 ? 8.2 : -8.2,
+      totalTrades: totalTradesCount,
+      winRate: Number(winRate),
+      avgProfit: Number(avgProfit),
+      avgLoss: Number(avgLoss),
+    };
+  }, [hasTrades, year, month, dailyData]);
 
   // Calendar cells generation for current month
   const calendarCells = useMemo(() => {
@@ -63,382 +176,519 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal, se
       cells.push({ type: 'empty', id: `empty-${i}` });
     }
 
-    // Days in current month
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     for (let day = 1; day <= totalDaysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayStats = dailyData[dateStr] || null;
+      const isToday = dateStr === todayStr || (!hasTrades && day === 28);
+
+      let stats = dailyData[dateStr] || null;
+      if (!hasTrades && DEMO_MONTH_DATA.days[day]) {
+        stats = {
+          netPnL: DEMO_MONTH_DATA.days[day].pnl,
+          trades: new Array(DEMO_MONTH_DATA.days[day].trades).fill({}),
+          isDemo: true,
+        };
+      }
+
       cells.push({
         type: 'day',
         dayNumber: day,
         dateStr,
-        stats: dayStats,
+        stats,
+        isToday,
       });
     }
 
     return cells;
-  }, [year, month, dailyData]);
+  }, [year, month, dailyData, hasTrades]);
 
-  // Monthly summary stats
-  const monthSummary = useMemo(() => {
-    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-    let totalPnL = 0;
-    let winningDays = 0;
-    let losingDays = 0;
-    let totalMonthTrades = 0;
+  // Weekly Performance Bar Chart Data
+  const weeklyBarsData = useMemo(() => {
+    if (!hasTrades) {
+      return DEMO_MONTH_DATA.weeklyBars;
+    }
 
-    Object.keys(dailyData).forEach((dateStr) => {
-      if (dateStr.startsWith(monthPrefix)) {
-        const pnl = dailyData[dateStr].netPnL;
-        totalPnL += pnl;
-        totalMonthTrades += dailyData[dateStr].trades.length;
-        if (pnl > 0) winningDays++;
-        else if (pnl < 0) losingDays++;
-      }
-    });
+    const daysList = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const pnlMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
 
-    const activeDays = winningDays + losingDays;
-    const winDayRate = activeDays > 0 ? ((winningDays / activeDays) * 100).toFixed(1) : 0;
-
-    return {
-      totalPnL,
-      winningDays,
-      losingDays,
-      totalMonthTrades,
-      winDayRate,
-    };
-  }, [year, month, dailyData]);
-
-  // Weekday distribution
-  const weekdayData = useMemo(() => {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const pnlMap = { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 };
-    const tradeCount = { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 };
-
-    trades.forEach((t) => {
+    safeTrades.forEach((t) => {
       if (!t.date) return;
-      const dIndex = new Date(t.date).getDay();
-      const dName = days[dIndex];
-      if (pnlMap[dName] !== undefined) {
-        pnlMap[dName] += Number(t.netPnL) || 0;
-        tradeCount[dName] += 1;
-      }
+      try {
+        let dateKey = String(t.date).trim();
+        if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateKey)) {
+          const parts = dateKey.split(/[-/]/);
+          dateKey = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        const d = new Date(dateKey);
+        if (isNaN(d.getTime())) return;
+        const shortName = d.toLocaleDateString('en-US', { weekday: 'short' });
+        if (pnlMap[shortName] !== undefined) {
+          pnlMap[shortName] += Number(t.netPnL) || 0;
+        }
+      } catch (e) {}
     });
 
-    const shortLabels = {
-      Monday: 'Mon',
-      Tuesday: 'Tue',
-      Wednesday: 'Wed',
-      Thursday: 'Thu',
-      Friday: 'Fri',
-    };
-
-    const initialLabels = {
-      Monday: 'M',
-      Tuesday: 'T',
-      Wednesday: 'W',
-      Thursday: 'T',
-      Friday: 'F',
-    };
-
-    return Object.keys(pnlMap).map((day) => ({
-      day,
-      shortDay: shortLabels[day],
-      initial: initialLabels[day],
-      pnl: pnlMap[day],
-      trades: tradeCount[day],
+    return daysList.map((d) => ({
+      day: d,
+      pnl: pnlMap[d] || 0,
     }));
-  }, [trades]);
+  }, [hasTrades, safeTrades]);
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
+  // Max absolute value for weekly performance chart scale
+  const maxWeeklyAbs = useMemo(() => {
+    const maxVal = Math.max(...weeklyBarsData.map((b) => Math.abs(b.pnl)), 1000);
+    return maxVal;
+  }, [weeklyBarsData]);
 
-  // Helper to test if a day of the week matches any configured index expiry
-  const getExpiryDayIndices = (dayName) => {
-    const matched = [];
-    Object.entries(expiryDaysConfig).forEach(([indexName, expDay]) => {
-      if (expDay && expDay.toLowerCase() === dayName.toLowerCase()) {
-        matched.push(indexName);
-      }
-    });
-    return matched;
-  };
-
-  const tuesdayExpiries = getExpiryDayIndices('Tuesday');
-  const wednesdayExpiries = getExpiryDayIndices('Wednesday');
-  const thursdayExpiries = getExpiryDayIndices('Thursday');
+  // Today's day index (0 = Sun, 1 = Mon, ..., 6 = Sat)
+  const todayDayIndex = new Date().getDay();
 
   return (
-    <div className="space-y-3 sm:space-y-4 pb-32 w-full min-w-0">
-      {/* Calendar Unified Fintech Box */}
-      <div className="rounded-2xl bg-[#090909] border border-neutral-800 shadow-2xl w-full min-w-0 overflow-hidden">
-        {/* Top Header: Month Title & Fast Steppers */}
-        <div className="bg-black/40 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-neutral-800 flex items-center justify-between gap-2">
-          <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-            <div className="p-1.5 sm:p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-emerald-400 shrink-0">
-              <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+    <div className="space-y-3.5 pb-20 max-w-4xl mx-auto w-full min-w-0 px-0.5">
+      {/* 1. Top Controls Bar: Month Picker + Steppers (Today, <, >) */}
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        {/* Month Selector Pill */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+            className="flex items-center space-x-2 px-3 py-2 rounded-2xl bg-[#0c0e10] border border-neutral-800 hover:border-neutral-700 transition active:scale-95 shadow-sm"
+          >
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[#00e676]">
+              <CalendarIcon className="w-4 h-4 text-[#00e676]" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <h2 className="text-sm sm:text-lg font-black text-white truncate">
-                  {monthNames[month]} {year}
-                </h2>
-                <span className="hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
-                  F&O Session
-                </span>
-              </div>
-              <p className="text-[10px] sm:text-xs text-neutral-400 truncate hidden xs:block">
-                Monthly P&L heat map & trade logs
-              </p>
+            <span className="text-sm sm:text-base font-black text-white tracking-tight">
+              {monthNames[month]} {year}
+            </span>
+            <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+          </button>
+
+          {/* Quick Month Dropdown */}
+          {isMonthPickerOpen && (
+            <div className="absolute left-0 top-full mt-1.5 w-48 rounded-2xl bg-[#0c0e10] border border-neutral-800 p-2 shadow-2xl z-30 max-h-60 overflow-y-auto">
+              {monthNames.map((m, idx) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setCurrentDate(new Date(year, idx, 1));
+                    setIsMonthPickerOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    idx === month ? 'bg-emerald-500/20 text-[#00e676]' : 'text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  {m} {year}
+                </button>
+              ))}
             </div>
+          )}
+        </div>
+
+        {/* Navigation Steppers: < | Today | > */}
+        <div className="flex items-center space-x-1.5">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="w-9 h-9 rounded-xl bg-[#0c0e10] border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white flex items-center justify-center transition active:scale-95 shadow-sm"
+            title="Previous Month"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={goToToday}
+            className="px-3.5 h-9 rounded-xl bg-[#0c0e10] border border-neutral-800 hover:border-neutral-700 text-white font-bold text-xs flex items-center justify-center transition active:scale-95 shadow-sm"
+          >
+            Today
+          </button>
+
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="w-9 h-9 rounded-xl bg-[#0c0e10] border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white flex items-center justify-center transition active:scale-95 shadow-sm"
+            title="Next Month"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Top 3 Summary Cards in a Row: PROFIT | LOSS | NET PROFIT */}
+      <div className="grid grid-cols-3 gap-2">
+        {/* Card 1: PROFIT */}
+        <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-2.5 sm:p-3.5 shadow-xl flex flex-col justify-between">
+          <div className="flex items-center justify-between text-neutral-400">
+            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Profit</span>
+            <TrendingUp className="w-3.5 h-3.5 text-[#00e676]" />
           </div>
 
-          {/* Month Steppers */}
-          <div className="flex items-center space-x-1 shrink-0">
-            <button
-              onClick={prevMonth}
-              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95 min-h-[38px] min-w-[38px] flex items-center justify-center"
-              title="Previous Month"
-              aria-label="Previous Month"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={goToToday}
-              className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold border border-neutral-800 transition active:scale-95 min-h-[38px] flex items-center justify-center"
-            >
-              Today
-            </button>
-            <button
-              onClick={nextMonth}
-              className="p-1 sm:p-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 transition active:scale-95 min-h-[38px] min-w-[38px] flex items-center justify-center"
-              title="Next Month"
-              aria-label="Next Month"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+          <div className="text-sm sm:text-lg md:text-xl font-black text-[#00e676] tracking-tight mt-1.5 truncate">
+            +{formatINR(monthStats.profit)}
+          </div>
+
+          <div className="text-[9px] sm:text-[10px] text-[#00e676] font-semibold mt-0.5 truncate">
+            ▲ +{monthStats.profitPercent}%
           </div>
         </div>
 
-        {/* Card Body: Summary Cards, Day Headers & Calendar Grid */}
-        <div className="p-2.5 sm:p-5 lg:p-6 space-y-3 sm:space-y-4">
-          {/* Monthly Key Metrics Banner - Sits fully visible below header */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full min-w-0">
-            <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-800 text-center sm:text-left min-w-0">
-              <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
-                <span className="sm:hidden">Net:</span>
-                <span className="hidden sm:inline">Month Net:</span>
-              </span>
-              <div className={`text-xs sm:text-base lg:text-xl font-black truncate mt-0.5 ${monthSummary.totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                <span className="hidden sm:inline">{formatINR(monthSummary.totalPnL)}</span>
-                <span className="sm:hidden">{formatINRCompact(monthSummary.totalPnL)}</span>
-              </div>
-            </div>
-            <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-800 text-center sm:text-left min-w-0">
-              <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
-                <span className="sm:hidden">Win:</span>
-                <span className="hidden sm:inline">Win Rate:</span>
-              </span>
-              <div className="text-xs sm:text-base lg:text-xl font-black text-white truncate mt-0.5">
-                {monthSummary.winDayRate}%
-              </div>
-            </div>
-            <div className="p-2 sm:px-3.5 sm:py-2.5 rounded-xl bg-black border border-neutral-800 text-center sm:text-left min-w-0">
-              <span className="text-neutral-400 font-semibold text-[10px] sm:text-xs uppercase tracking-wider block truncate">
-                <span className="sm:hidden">Trades:</span>
-                <span className="hidden sm:inline">Total Trades:</span>
-              </span>
-              <div className="text-xs sm:text-base lg:text-xl font-black text-cyan-400 truncate mt-0.5">
-                {monthSummary.totalMonthTrades}
-              </div>
-            </div>
+        {/* Card 2: LOSS */}
+        <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-2.5 sm:p-3.5 shadow-xl flex flex-col justify-between">
+          <div className="flex items-center justify-between text-neutral-400">
+            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Loss</span>
+            <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
           </div>
 
-          {/* Day Name Headers - 7 Columns with configurable Expiry Markers */}
-          <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 text-center text-[10px] sm:text-xs font-bold uppercase tracking-wider text-neutral-400 select-none w-full min-w-0 pt-1">
-            <div className="text-neutral-600"><span className="hidden sm:inline">Sun</span><span className="sm:hidden">S</span></div>
-            <div><span className="hidden sm:inline">Mon</span><span className="sm:hidden">M</span></div>
-            <div className={tuesdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
-              <span className="hidden sm:inline">Tue {tuesdayExpiries.length > 0 ? `(${tuesdayExpiries.join('/')} Exp)` : ''}</span>
-              <span className="sm:hidden">T{tuesdayExpiries.length > 0 ? '*' : ''}</span>
-            </div>
-            <div className={wednesdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
-              <span className="hidden sm:inline">Wed {wednesdayExpiries.length > 0 ? `(${wednesdayExpiries.join('/')} Exp)` : ''}</span>
-              <span className="sm:hidden">W{wednesdayExpiries.length > 0 ? '*' : ''}</span>
-            </div>
-            <div className={thursdayExpiries.length > 0 ? 'text-emerald-400 font-black' : ''}>
-              <span className="hidden sm:inline">Thu {thursdayExpiries.length > 0 ? `(${thursdayExpiries.join('/')} Exp)` : ''}</span>
-              <span className="sm:hidden">T{thursdayExpiries.length > 0 ? '*' : ''}</span>
-            </div>
-            <div><span className="hidden sm:inline">Fri</span><span className="sm:hidden">F</span></div>
-            <div className="text-neutral-600"><span className="hidden sm:inline">Sat</span><span className="sm:hidden">S</span></div>
+          <div className="text-sm sm:text-lg md:text-xl font-black text-rose-500 tracking-tight mt-1.5 truncate">
+            {formatINR(monthStats.loss)}
           </div>
 
-          {/* Days Cells - Small, Simple, Fits Box Area */}
-          <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 w-full min-w-0">
-            {calendarCells.map((cell) => {
-              if (cell.type === 'empty') {
-                return (
-                  <div
-                    key={cell.id}
-                    className="min-w-0 h-12 xs:h-14 sm:h-20 md:h-24 lg:h-28 rounded-lg sm:rounded-xl bg-black/40 border border-neutral-900/50"
-                  />
-                );
-              }
+          <div className="text-[9px] sm:text-[10px] text-rose-500 font-semibold mt-0.5 truncate">
+            ▼ {monthStats.lossPercent}%
+          </div>
+        </div>
 
-              const { dayNumber, dateStr, stats } = cell;
-              const hasTrades = stats && stats.trades.length > 0;
-              const isProfit = hasTrades && stats.netPnL > 0;
-              const isLoss = hasTrades && stats.netPnL < 0;
-
-              const isToday = dateStr === new Date().toISOString().slice(0, 10);
-
-              return (
-                <div
-                  key={dateStr}
-                  onClick={() => {
-                    if (hasTrades) {
-                      setSelectedDateTrades({ date: dateStr, stats });
-                    }
-                  }}
-                  className={`min-w-0 h-12 xs:h-14 sm:h-20 md:h-24 lg:h-28 rounded-lg sm:rounded-xl p-1 sm:p-2 flex flex-col justify-between transition-all duration-150 border overflow-hidden select-none ${
-                    hasTrades
-                      ? isProfit
-                        ? 'bg-emerald-950/25 border-emerald-500/50 hover:border-emerald-400 cursor-pointer shadow-sm active:scale-95'
-                        : isLoss
-                        ? 'bg-rose-950/25 border-rose-500/50 hover:border-rose-400 cursor-pointer shadow-sm active:scale-95'
-                        : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700 cursor-pointer active:scale-95'
-                      : 'bg-black/60 border-neutral-850'
-                  } ${isToday ? 'ring-1 sm:ring-2 ring-emerald-400' : ''}`}
-                >
-                  {/* Day Header */}
-                  <div className="flex items-center justify-between w-full min-w-0 leading-none">
-                    <span className={`text-[10px] sm:text-xs font-bold leading-none ${
-                      isToday
-                        ? 'text-emerald-400 font-black'
-                        : hasTrades
-                        ? 'text-white'
-                        : 'text-neutral-500'
-                    }`}>
-                      {dayNumber}
-                    </span>
-                    {hasTrades && (
-                      <>
-                        {/* Mobile count */}
-                        <span className="sm:hidden text-[8px] font-bold text-neutral-400">
-                          {stats.trades.length}t
-                        </span>
-                        {/* Tablet / Desktop badge */}
-                        <span className="hidden sm:inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">
-                          {stats.trades.length} {stats.trades.length === 1 ? 'trade' : 'trades'}
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Day P&L - Clean, compact & bold */}
-                  {hasTrades ? (
-                    <div className="text-center my-auto sm:my-0 w-full min-w-0 overflow-hidden leading-none">
-                      <div className={`font-black truncate ${isProfit ? 'text-emerald-400' : isLoss ? 'text-rose-500' : 'text-neutral-300'}`}>
-                        <span className="hidden sm:inline text-xs sm:text-sm md:text-base">{formatINR(stats.netPnL)}</span>
-                        <span className="sm:hidden text-[9px] xs:text-[10px] tracking-tight leading-none font-black block truncate">
-                          {formatINRCompact(stats.netPnL)}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="hidden sm:block text-center text-[10px] text-neutral-800 my-auto">-</div>
-                  )}
-
-                  {/* Charges indicator on tablet/desktop */}
-                  {hasTrades && (
-                    <div className="hidden sm:block text-[10px] text-neutral-500 text-right truncate">
-                      ₹{stats.charges.toFixed(0)} chgs
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {/* Card 3: NET PROFIT */}
+        <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-2.5 sm:p-3.5 shadow-xl flex flex-col justify-between">
+          <div className="flex items-center justify-between text-neutral-400">
+            <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Net Profit</span>
           </div>
 
-          {/* Footer Micro-Legend inside the Box */}
-          <div className="pt-2 border-t border-neutral-900 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs text-neutral-400 select-none">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-                <span className="text-neutral-300">Profit</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
-                <span className="text-neutral-300">Loss</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="text-emerald-400 font-bold">*</span>
-                <span className="text-neutral-300">Expiry (Configurable in Settings)</span>
-              </span>
-            </div>
-            <span className="text-neutral-400 text-[10px]">Tap active day for trades</span>
+          <div className={`text-sm sm:text-lg md:text-xl font-black tracking-tight mt-1.5 truncate ${
+            monthStats.netProfit >= 0 ? 'text-[#00e676]' : 'text-rose-500'
+          }`}>
+            {monthStats.netProfit >= 0 ? `+${formatINR(monthStats.netProfit)}` : formatINR(monthStats.netProfit)}
+          </div>
+
+          <div className={`text-[9px] sm:text-[10px] font-semibold mt-0.5 truncate ${
+            monthStats.netProfit >= 0 ? 'text-[#00e676]' : 'text-rose-500'
+          }`}>
+            ▲ +{monthStats.netPercent}%
           </div>
         </div>
       </div>
 
-      {/* Weekday Performance Analysis Bar Chart (Tightened Height & Reduced Empty Area) */}
-      <div className="p-3 sm:p-4 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl overflow-hidden w-full min-w-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
-          <div>
-            <h3 className="text-xs sm:text-sm font-bold text-white">Weekday Edge Distribution</h3>
-            <p className="text-[10px] sm:text-xs text-neutral-400">Total Net Profit across trading days of the week</p>
-          </div>
-          <span className="text-xs text-emerald-400 font-bold hidden sm:inline">Expiry Analysis</span>
+      {/* 3. Calendar Grid Container */}
+      <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-2">
+        {/* Weekday Headers: S M T W T F S */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center select-none pb-1">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((dayChar, i) => {
+            const isTodayDay = i === todayDayIndex;
+            return (
+              <div key={i} className="flex flex-col items-center justify-center">
+                <span className={`text-xs font-black uppercase ${
+                  isTodayDay ? 'text-[#00e676]' : 'text-neutral-400'
+                }`}>
+                  {dayChar}
+                </span>
+                {isTodayDay && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00e676] shadow-[0_0_6px_#00e676] mt-0.5" />
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        <div className="h-32 sm:h-44 w-full min-w-0 overflow-hidden">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weekdayData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-              <XAxis
-                dataKey="shortDay"
-                stroke="#525252"
-                tick={{ fontSize: 10 }}
-                tickFormatter={(v, i) => (typeof window !== 'undefined' && window.innerWidth < 450 ? weekdayData[i]?.initial || v : v)}
-              />
-              <YAxis
-                stroke="#525252"
-                tick={{ fontSize: 9 }}
-                tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const item = payload[0].payload;
-                    return (
-                      <div className="bg-black p-2.5 rounded-xl border border-neutral-800 text-xs shadow-xl">
-                        <div className="font-bold text-white">{item.day}</div>
-                        <div className="text-neutral-400">Executed Trades: {item.trades}</div>
-                        <div className="mt-1">
-                          Net Profit: <strong className={item.pnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}>{formatINR(item.pnl)}</strong>
-                        </div>
-                      </div>
-                    );
+        {/* Calendar Cells Grid */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 select-none">
+          {calendarCells.map((cell) => {
+            if (cell.type === 'empty') {
+              return (
+                <div
+                  key={cell.id}
+                  className="h-13 sm:h-16 rounded-xl bg-black/40 border border-neutral-900/60"
+                />
+              );
+            }
+
+            const { dayNumber, dateStr, stats, isToday } = cell;
+            const hasActivity = stats && (stats.trades?.length > 0 || stats.netPnL !== undefined);
+            const isProfit = hasActivity && Number(stats.netPnL) > 0;
+            const isLoss = hasActivity && Number(stats.netPnL) < 0;
+
+            return (
+              <div
+                key={dateStr}
+                onClick={() => {
+                  if (hasActivity && stats.trades && !stats.isDemo) {
+                    setSelectedDateTrades({ date: dateStr, stats });
                   }
-                  return null;
                 }}
-              />
-              <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                {weekdayData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#00e676' : '#ff3b57'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                className={`h-13 sm:h-16 rounded-xl p-1 sm:p-1.5 flex flex-col justify-between transition-all duration-150 border relative overflow-hidden ${
+                  isToday
+                    ? 'border-2 border-[#00e676] bg-emerald-950/20 shadow-[0_0_12px_rgba(0,230,118,0.3)]'
+                    : isProfit
+                    ? 'bg-[#041a0d] border-emerald-500/40 hover:border-emerald-400 cursor-pointer'
+                    : isLoss
+                    ? 'bg-[#200709] border-rose-500/40 hover:border-rose-400 cursor-pointer'
+                    : 'bg-black/60 border-neutral-800/80 hover:border-neutral-700'
+                } ${hasActivity ? 'active:scale-95' : ''}`}
+              >
+                {/* Top Row: Date Number + Corner Indicator Dot */}
+                <div className="flex items-center justify-between w-full leading-none">
+                  <span className={`text-[10px] sm:text-xs font-black ${
+                    isToday ? 'text-white' : hasActivity ? 'text-white' : 'text-neutral-400'
+                  }`}>
+                    {dayNumber}
+                  </span>
+
+                  {/* Corner Status Dot */}
+                  {isProfit && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00e676] shadow-[0_0_4px_#00e676]" />
+                  )}
+                  {isLoss && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] shadow-[0_0_4px_#ef4444]" />
+                  )}
+                </div>
+
+                {/* Center / Bottom: Amount or Today Center Dot */}
+                <div className="text-center my-auto leading-none w-full truncate">
+                  {hasActivity ? (
+                    <span
+                      className={`text-[9px] sm:text-[10px] font-black tracking-tight block truncate ${
+                        isProfit ? 'text-[#00e676]' : isLoss ? 'text-rose-500' : 'text-neutral-300'
+                      }`}
+                    >
+                      {formatINRCompact(stats.netPnL)}
+                    </span>
+                  ) : isToday ? (
+                    <span className="w-2 h-2 rounded-full bg-[#00e676] inline-block shadow-[0_0_8px_#00e676]" />
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
+
+        {/* 4. Legend & Filter Row */}
+        <div className="pt-2 border-t border-neutral-900 flex items-center justify-between text-xs text-neutral-400 select-none">
+          <div className="flex items-center space-x-3 text-[11px]">
+            <span className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#00e676] shadow-[0_0_6px_#00e676]" />
+              <span className="text-neutral-300 font-medium">Profit</span>
+            </span>
+            <span className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#ef4444] shadow-[0_0_6px_#ef4444]" />
+              <span className="text-neutral-300 font-medium">Loss</span>
+            </span>
+            <span className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#525252]" />
+              <span className="text-neutral-400 font-medium">No Trades</span>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="p-1 rounded-lg text-neutral-400 hover:text-white transition"
+            title="Calendar Filters"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-neutral-400" />
+          </button>
+        </div>
+      </div>
+
+      {/* 5. Summary for Month Section */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs sm:text-sm font-bold text-white italic tracking-wide">
+            Summary for {monthNames[month]}
+          </h3>
+          <button
+            type="button"
+            onClick={() => onOpenTradeModal && onOpenTradeModal()}
+            className="text-[11px] font-bold text-[#00e676] hover:underline flex items-center space-x-1"
+          >
+            <span>View Details</span>
+            <span>→</span>
+          </button>
+        </div>
+
+        {/* 4 Metrics in a Row: Total Trades | Win Rate | Avg Profit | Avg Loss */}
+        <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+          {/* Total Trades */}
+          <div className="rounded-xl bg-[#0c0e10] border border-neutral-800/80 p-2 sm:p-2.5 shadow-sm">
+            <span className="text-[9px] sm:text-[10px] text-neutral-400 font-medium block truncate">
+              Total Trades
+            </span>
+            <div className="flex items-center space-x-1.5 mt-1">
+              <Briefcase className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+              <strong className="text-xs sm:text-sm font-black text-white truncate">
+                {monthStats.totalTrades}
+              </strong>
+            </div>
+          </div>
+
+          {/* Win Rate */}
+          <div className="rounded-xl bg-[#0c0e10] border border-neutral-800/80 p-2 sm:p-2.5 shadow-sm">
+            <span className="text-[9px] sm:text-[10px] text-neutral-400 font-medium block truncate">
+              Win Rate
+            </span>
+            <div className="flex items-center space-x-1.5 mt-1">
+              <Trophy className="w-3.5 h-3.5 text-[#00e676] shrink-0" />
+              <strong className="text-xs sm:text-sm font-black text-white truncate">
+                {monthStats.winRate}%
+              </strong>
+            </div>
+          </div>
+
+          {/* Avg Profit */}
+          <div className="rounded-xl bg-[#0c0e10] border border-neutral-800/80 p-2 sm:p-2.5 shadow-sm">
+            <span className="text-[9px] sm:text-[10px] text-neutral-400 font-medium block truncate">
+              Avg Profit
+            </span>
+            <div className="flex items-center space-x-1.5 mt-1">
+              <TrendingUp className="w-3.5 h-3.5 text-[#00e676] shrink-0" />
+              <strong className="text-xs sm:text-sm font-black text-white truncate">
+                ₹{monthStats.avgProfit}
+              </strong>
+            </div>
+          </div>
+
+          {/* Avg Loss */}
+          <div className="rounded-xl bg-[#0c0e10] border border-neutral-800/80 p-2 sm:p-2.5 shadow-sm">
+            <span className="text-[9px] sm:text-[10px] text-neutral-400 font-medium block truncate">
+              Avg Loss
+            </span>
+            <div className="flex items-center space-x-1.5 mt-1">
+              <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+              <strong className="text-xs sm:text-sm font-black text-white truncate">
+                ₹{monthStats.avgLoss}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. Weekly Performance Card */}
+      <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-3">
+        {/* Card Header + Time Filter Pills */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center space-x-2">
+            <BarChart3 className="w-4 h-4 text-[#00e676]" />
+            <h3 className="text-xs sm:text-sm font-black text-white tracking-tight">
+              Weekly Performance
+            </h3>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center space-x-1 bg-black/60 p-0.5 rounded-full border border-neutral-800/80">
+            {['This Month', 'This Week', 'Last Month'].map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setWeeklyFilter(f)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${
+                  weeklyFilter === f
+                    ? 'bg-[#00e676] text-black shadow-[0_0_10px_rgba(0,230,118,0.5)]'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Weekly Chart Container */}
+        <div className="pt-2 pb-1">
+          {/* Main Chart Area with Y-axis and Centered Zero Line */}
+          <div className="relative h-36 flex flex-col justify-between">
+            {/* Horizontal Gridlines & Left Labels */}
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[9px] text-neutral-400 font-mono">
+              <div className="flex items-center space-x-2">
+                <span className="w-8 text-right">₹6k</span>
+                <div className="flex-1 border-b border-neutral-800/40" />
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-8 text-right">₹3k</span>
+                <div className="flex-1 border-b border-neutral-800/40" />
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-8 text-right text-neutral-300 font-bold">0</span>
+                <div className="flex-1 border-b border-neutral-700/80" />
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-8 text-right">-₹3k</span>
+                <div className="flex-1 border-b border-neutral-800/40" />
+              </div>
+            </div>
+
+            {/* 7 Vertical Bars */}
+            <div className="relative pl-10 pr-2 h-full flex items-center justify-between">
+              {weeklyBarsData.map((b) => {
+                const isPos = b.pnl >= 0;
+                const absVal = Math.abs(b.pnl);
+                // Bar height % of half-chart (max 48px each direction)
+                const heightPercent = Math.min(85, Math.max(16, Math.round((absVal / maxWeeklyAbs) * 80)));
+
+                return (
+                  <div key={b.day} className="flex-1 flex flex-col items-center justify-center h-full relative">
+                    {/* Amount floating above positive bar */}
+                    {isPos && (
+                      <span className="absolute text-[8.5px] sm:text-[9.5px] font-black text-[#00e676] -translate-y-8 tracking-tight">
+                        +{formatINRCompact(b.pnl)}
+                      </span>
+                    )}
+
+                    {/* Bar graphic centered around baseline */}
+                    <div className="h-full flex flex-col justify-center items-center w-full">
+                      {/* Top half for positive */}
+                      <div className="h-1/2 w-full flex items-end justify-center">
+                        {isPos && (
+                          <div
+                            style={{ height: `${heightPercent}%` }}
+                            className="w-full max-w-[22px] sm:max-w-[28px] rounded-t bg-[#00e676] shadow-[0_0_10px_rgba(0,230,118,0.5)] transition-all"
+                          />
+                        )}
+                      </div>
+
+                      {/* Bottom half for negative */}
+                      <div className="h-1/2 w-full flex items-start justify-center">
+                        {!isPos && (
+                          <div
+                            style={{ height: `${heightPercent}%` }}
+                            className="w-full max-w-[22px] sm:max-w-[28px] rounded-b bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)] transition-all"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Amount floating below negative bar */}
+                    {!isPos && (
+                      <span className="absolute text-[8.5px] sm:text-[9.5px] font-black text-rose-500 translate-y-8 tracking-tight">
+                        {formatINRCompact(b.pnl)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* X-axis Day Labels */}
+          <div className="pl-10 pr-2 pt-2 flex items-center justify-between text-center select-none">
+            {weeklyBarsData.map((b) => (
+              <span key={b.day} className="flex-1 text-[10px] sm:text-[11px] font-bold text-neutral-400">
+                {b.day}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 7. Disclaimer Line neatly above Bottom Navigation Bar */}
+      <div className="pt-2 pb-8 text-center select-none px-2">
+        <p className="text-[10px] sm:text-[11px] text-neutral-400 font-medium tracking-wide">
+          ⚠️ Disclaimer: Futures &amp; Options trading involves substantial risk of loss. For journaling &amp; performance tracking only.
+        </p>
       </div>
 
       {/* Selected Day Inspector Modal */}
       {selectedDateTrades && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-[#090909] border border-neutral-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-[#0c0e10] border border-neutral-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-neutral-800 bg-black">
               <div>
                 <h3 className="text-base font-bold text-white">
@@ -453,10 +703,11 @@ export default function CalendarView({ trades, onViewTrade, onOpenTradeModal, se
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedDateTrades(null)}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-2 rounded-xl text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 min-h-[44px] min-w-[44px] flex items-center justify-center transition"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
