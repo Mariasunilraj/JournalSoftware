@@ -8,7 +8,6 @@ import {
   TrendingDown,
   Briefcase,
   Trophy,
-  SlidersHorizontal,
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
@@ -45,15 +44,35 @@ const DEMO_MONTH_DATA = {
     26: { pnl: 5700, trades: 3 },
     27: { pnl: -2000, trades: 1 },
   },
-  weeklyBars: [
-    { day: 'Mon', pnl: 1200 },
-    { day: 'Tue', pnl: 3400 },
-    { day: 'Wed', pnl: -819 },
-    { day: 'Thu', pnl: 1500 },
-    { day: 'Fri', pnl: 4100 },
-    { day: 'Sat', pnl: 800 },
-    { day: 'Sun', pnl: -249 },
-  ],
+  performanceSets: {
+    'This Month': [
+      { day: 'Mon', pnl: 1200 },
+      { day: 'Tue', pnl: 3400 },
+      { day: 'Wed', pnl: -819 },
+      { day: 'Thu', pnl: 1500 },
+      { day: 'Fri', pnl: 4100 },
+      { day: 'Sat', pnl: 800 },
+      { day: 'Sun', pnl: -249 },
+    ],
+    'This Week': [
+      { day: 'Mon', pnl: 650 },
+      { day: 'Tue', pnl: 1850 },
+      { day: 'Wed', pnl: -420 },
+      { day: 'Thu', pnl: 920 },
+      { day: 'Fri', pnl: 2100 },
+      { day: 'Sat', pnl: 0 },
+      { day: 'Sun', pnl: -150 },
+    ],
+    'Last Month': [
+      { day: 'Mon', pnl: -950 },
+      { day: 'Tue', pnl: 2100 },
+      { day: 'Wed', pnl: 1400 },
+      { day: 'Thu', pnl: -1250 },
+      { day: 'Fri', pnl: 3600 },
+      { day: 'Sat', pnl: 450 },
+      { day: 'Sun', pnl: -600 },
+    ],
+  },
 };
 
 export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModal, settings = {} }) {
@@ -203,17 +222,53 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
     return cells;
   }, [year, month, dailyData, hasTrades]);
 
-  // Weekly Performance Bar Chart Data
+  // Performance Bar Chart Data dynamically filtered by 'This Month' | 'This Week' | 'Last Month'
   const weeklyBarsData = useMemo(() => {
+    const daysList = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
     if (!hasTrades) {
-      return DEMO_MONTH_DATA.weeklyBars;
+      return DEMO_MONTH_DATA.performanceSets[weeklyFilter] || DEMO_MONTH_DATA.performanceSets['This Month'];
     }
 
-    const daysList = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const now = new Date();
+    // Calculate 'This Week' bounds (Monday to Sunday)
+    const currentDayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon ...
+    const distToMon = (currentDayOfWeek + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - distToMon);
+    monday.setHours(0, 0, 0, 0);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    // Calculate 'Last Month' bounds
+    const prevMonthDate = new Date(year, month - 1, 1);
+    const lastMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+    const thisMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+    const filtered = safeTrades.filter((t) => {
+      if (!t.date) return false;
+      let dateKey = String(t.date).trim();
+      if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateKey)) {
+        const parts = dateKey.split(/[-/]/);
+        dateKey = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+
+      if (weeklyFilter === 'This Week') {
+        const tDate = new Date(dateKey);
+        return tDate >= monday && tDate <= sunday;
+      }
+      if (weeklyFilter === 'Last Month') {
+        return dateKey.startsWith(lastMonthPrefix);
+      }
+      // 'This Month'
+      return dateKey.startsWith(thisMonthPrefix);
+    });
+
     const pnlMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
 
-    safeTrades.forEach((t) => {
-      if (!t.date) return;
+    filtered.forEach((t) => {
       try {
         let dateKey = String(t.date).trim();
         if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateKey)) {
@@ -233,13 +288,25 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
       day: d,
       pnl: pnlMap[d] || 0,
     }));
-  }, [hasTrades, safeTrades]);
+  }, [hasTrades, safeTrades, weeklyFilter, year, month]);
 
-  // Max absolute value for weekly performance chart scale
+  // Max absolute value for performance chart scale
   const maxWeeklyAbs = useMemo(() => {
-    const maxVal = Math.max(...weeklyBarsData.map((b) => Math.abs(b.pnl)), 1000);
+    const maxVal = Math.max(...weeklyBarsData.map((b) => Math.abs(b.pnl)), 500);
     return maxVal;
   }, [weeklyBarsData]);
+
+  // Dynamic Y-axis scale labels based on max value
+  const yScaleLabels = useMemo(() => {
+    const top = maxWeeklyAbs;
+    const mid = Math.round(top / 2);
+    return {
+      top: formatINRCompact(top),
+      mid: formatINRCompact(mid),
+      zero: '0',
+      bottom: formatINRCompact(-mid),
+    };
+  }, [maxWeeklyAbs]);
 
   // Today's day index (0 = Sun, 1 = Mon, ..., 6 = Sat)
   const todayDayIndex = new Date().getDay();
@@ -462,47 +529,29 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
           })}
         </div>
 
-        {/* 4. Legend & Filter Row */}
-        <div className="pt-2 border-t border-neutral-900 flex items-center justify-between text-xs text-neutral-400 select-none">
-          <div className="flex items-center space-x-3 text-[11px]">
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#00e676] shadow-[0_0_6px_#00e676]" />
-              <span className="text-neutral-300 font-medium">Profit</span>
-            </span>
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#ef4444] shadow-[0_0_6px_#ef4444]" />
-              <span className="text-neutral-300 font-medium">Loss</span>
-            </span>
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#525252]" />
-              <span className="text-neutral-400 font-medium">No Trades</span>
-            </span>
-          </div>
-
-          <button
-            type="button"
-            className="p-1 rounded-lg text-neutral-400 hover:text-white transition"
-            title="Calendar Filters"
-          >
-            <SlidersHorizontal className="w-4 h-4 text-neutral-400" />
-          </button>
+        {/* 4. Legend Row (Filter button removed per request) */}
+        <div className="pt-2 border-t border-neutral-900 flex items-center space-x-3 text-[11px] text-neutral-400 select-none">
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#00e676] shadow-[0_0_6px_#00e676]" />
+            <span className="text-neutral-300 font-medium">Profit</span>
+          </span>
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#ef4444] shadow-[0_0_6px_#ef4444]" />
+            <span className="text-neutral-300 font-medium">Loss</span>
+          </span>
+          <span className="flex items-center space-x-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#525252]" />
+            <span className="text-neutral-400 font-medium">No Trades</span>
+          </span>
         </div>
       </div>
 
-      {/* 5. Summary for Month Section */}
+      {/* 5. Summary for Month Section ("View Details" button removed per request) */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between px-1">
+        <div className="px-1">
           <h3 className="text-xs sm:text-sm font-bold text-white italic tracking-wide">
             Summary for {monthNames[month]}
           </h3>
-          <button
-            type="button"
-            onClick={() => onOpenTradeModal && onOpenTradeModal()}
-            className="text-[11px] font-bold text-[#00e676] hover:underline flex items-center space-x-1"
-          >
-            <span>View Details</span>
-            <span>→</span>
-          </button>
         </div>
 
         {/* 4 Metrics in a Row: Total Trades | Win Rate | Avg Profit | Avg Loss */}
@@ -561,14 +610,14 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
         </div>
       </div>
 
-      {/* 6. Weekly Performance Card */}
+      {/* 6. Performance Card */}
       <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-3">
         {/* Card Header + Time Filter Pills */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center space-x-2">
             <BarChart3 className="w-4 h-4 text-[#00e676]" />
             <h3 className="text-xs sm:text-sm font-black text-white tracking-tight">
-              Weekly Performance
+              Performance
             </h3>
           </div>
 
@@ -591,18 +640,18 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
           </div>
         </div>
 
-        {/* Weekly Chart Container */}
+        {/* Performance Chart Container */}
         <div className="pt-2 pb-1">
           {/* Main Chart Area with Y-axis and Centered Zero Line */}
           <div className="relative h-36 flex flex-col justify-between">
             {/* Horizontal Gridlines & Left Labels */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[9px] text-neutral-400 font-mono">
               <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">₹6k</span>
+                <span className="w-8 text-right">{yScaleLabels.top}</span>
                 <div className="flex-1 border-b border-neutral-800/40" />
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">₹3k</span>
+                <span className="w-8 text-right">{yScaleLabels.mid}</span>
                 <div className="flex-1 border-b border-neutral-800/40" />
               </div>
               <div className="flex items-center space-x-2">
@@ -610,7 +659,7 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
                 <div className="flex-1 border-b border-neutral-700/80" />
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">-₹3k</span>
+                <span className="w-8 text-right">{yScaleLabels.bottom}</span>
                 <div className="flex-1 border-b border-neutral-800/40" />
               </div>
             </div>
