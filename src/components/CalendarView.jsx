@@ -641,89 +641,93 @@ export default function CalendarView({ trades = [], onViewTrade, onOpenTradeModa
         </div>
 
         {/* Performance Chart Container */}
-        <div className="pt-2 pb-1">
-          {/* Main Chart Area with Y-axis and Centered Zero Line */}
-          <div className="relative h-36 flex flex-col justify-between">
-            {/* Horizontal Gridlines & Left Labels */}
-            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[9px] text-neutral-400 font-mono">
-              <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">{yScaleLabels.top}</span>
-                <div className="flex-1 border-b border-neutral-800/40" />
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">{yScaleLabels.mid}</span>
-                <div className="flex-1 border-b border-neutral-800/40" />
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-8 text-right text-neutral-300 font-bold">0</span>
-                <div className="flex-1 border-b border-neutral-700/80" />
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-8 text-right">{yScaleLabels.bottom}</span>
-                <div className="flex-1 border-b border-neutral-800/40" />
-              </div>
-            </div>
+        <div className="pt-2 pb-1 w-full overflow-hidden">
+          <svg viewBox="0 0 320 138" fill="none" className="w-full h-36 sm:h-40" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="greenGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#00e676" floodOpacity="0.6" />
+              </filter>
+              <filter id="redGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#ef4444" floodOpacity="0.6" />
+              </filter>
+            </defs>
 
-            {/* 7 Vertical Bars */}
-            <div className="relative pl-10 pr-2 h-full flex items-center justify-between">
-              {weeklyBarsData.map((b) => {
-                const isPos = b.pnl >= 0;
-                const absVal = Math.abs(b.pnl);
-                // Bar height % of half-chart (max 48px each direction)
-                const heightPercent = Math.min(85, Math.max(16, Math.round((absVal / maxWeeklyAbs) * 80)));
+            {/* Horizontal Gridlines */}
+            <line x1="38" y1="36" x2="315" y2="36" stroke="#262626" strokeDasharray="3 3" />
+            <line x1="38" y1="58" x2="315" y2="58" stroke="#262626" strokeDasharray="3 3" />
+            <line x1="38" y1="80" x2="315" y2="80" stroke="#404040" strokeWidth="1" />
+            <line x1="38" y1="104" x2="315" y2="104" stroke="#262626" strokeDasharray="3 3" />
 
-                return (
-                  <div key={b.day} className="flex-1 flex flex-col items-center justify-center h-full relative">
-                    {/* Amount floating above positive bar */}
-                    {isPos && (
-                      <span className="absolute text-[8.5px] sm:text-[9.5px] font-black text-[#00e676] -translate-y-8 tracking-tight">
-                        +{formatINRCompact(b.pnl)}
-                      </span>
-                    )}
+            {/* Y-axis Labels on Left */}
+            <text x="32" y="39" textAnchor="end" fill="#737373" fontSize="8.5" fontFamily="monospace">{yScaleLabels.top}</text>
+            <text x="32" y="61" textAnchor="end" fill="#737373" fontSize="8.5" fontFamily="monospace">{yScaleLabels.mid}</text>
+            <text x="32" y="83" textAnchor="end" fill="#a3a3a3" fontSize="8.5" fontWeight="bold" fontFamily="monospace">0</text>
+            <text x="32" y="107" textAnchor="end" fill="#737373" fontSize="8.5" fontFamily="monospace">{yScaleLabels.bottom}</text>
 
-                    {/* Bar graphic centered around baseline */}
-                    <div className="h-full flex flex-col justify-center items-center w-full">
-                      {/* Top half for positive */}
-                      <div className="h-1/2 w-full flex items-end justify-center">
-                        {isPos && (
-                          <div
-                            style={{ height: `${heightPercent}%` }}
-                            className="w-full max-w-[22px] sm:max-w-[28px] rounded-t bg-[#00e676] shadow-[0_0_10px_rgba(0,230,118,0.5)] transition-all"
-                          />
-                        )}
-                      </div>
+            {/* 7 Weekday Columns */}
+            {weeklyBarsData.map((b, i) => {
+              const colCenter = 56 + i * 37.5;
+              const barWidth = 16;
+              const barX = colCenter - barWidth / 2;
+              const isPos = b.pnl >= 0;
+              const absVal = Math.abs(b.pnl);
+              const baselineY = 80;
 
-                      {/* Bottom half for negative */}
-                      <div className="h-1/2 w-full flex items-start justify-center">
-                        {!isPos && (
-                          <div
-                            style={{ height: `${heightPercent}%` }}
-                            className="w-full max-w-[22px] sm:max-w-[28px] rounded-b bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)] transition-all"
-                          />
-                        )}
-                      </div>
-                    </div>
+              // Normalized bar heights
+              const barHeight = absVal === 0
+                ? 2
+                : isPos
+                ? Math.min(42, Math.max(6, Math.round((absVal / maxWeeklyAbs) * 40)))
+                : Math.min(24, Math.max(6, Math.round((absVal / maxWeeklyAbs) * 22)));
 
-                    {/* Amount floating below negative bar */}
-                    {!isPos && (
-                      <span className="absolute text-[8.5px] sm:text-[9.5px] font-black text-rose-500 translate-y-8 tracking-tight">
-                        {formatINRCompact(b.pnl)}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+              const barY = isPos ? baselineY - barHeight : baselineY;
+              // Amount is ALWAYS positioned strictly above the candle with no overlap
+              const labelY = barY - 5;
 
-          {/* X-axis Day Labels */}
-          <div className="pl-10 pr-2 pt-2 flex items-center justify-between text-center select-none">
-            {weeklyBarsData.map((b) => (
-              <span key={b.day} className="flex-1 text-[10px] sm:text-[11px] font-bold text-neutral-400">
-                {b.day}
-              </span>
-            ))}
-          </div>
+              return (
+                <g key={b.day}>
+                  {/* Amount Label above candle */}
+                  {b.pnl !== 0 && (
+                    <text
+                      x={colCenter}
+                      y={labelY}
+                      textAnchor="middle"
+                      fill={isPos ? '#00e676' : '#ef4444'}
+                      fontSize="8.5"
+                      fontWeight="900"
+                      fontFamily="system-ui, -apple-system, sans-serif"
+                    >
+                      {isPos ? `+${formatINRCompact(b.pnl)}` : formatINRCompact(b.pnl)}
+                    </text>
+                  )}
+
+                  {/* Candle / Bar */}
+                  <rect
+                    x={barX}
+                    y={barY}
+                    width={barWidth}
+                    height={barHeight}
+                    rx="3"
+                    fill={isPos ? '#00e676' : '#ef4444'}
+                    filter={isPos ? 'url(#greenGlow)' : 'url(#redGlow)'}
+                  />
+
+                  {/* X-axis Day Label */}
+                  <text
+                    x={colCenter}
+                    y="126"
+                    textAnchor="middle"
+                    fill="#a3a3a3"
+                    fontSize="10"
+                    fontWeight="bold"
+                    fontFamily="system-ui, -apple-system, sans-serif"
+                  >
+                    {b.day}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
         </div>
       </div>
 
