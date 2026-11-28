@@ -26,9 +26,10 @@ export default function AuthView({ onLoginSuccess }) {
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  // Register form state
+  // Register form state with distinct, protected fields
   const [regName, setRegName] = useState('');
   const [regUsername, setRegUsername] = useState('');
+  const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
@@ -61,6 +62,19 @@ export default function AuthView({ onLoginSuccess }) {
     setErrorMsg('');
     setSuccessMsg('');
 
+    const cleanUser = regUsername.trim().toLowerCase();
+    const cleanEmail = regEmail.trim().toLowerCase();
+
+    if (!cleanUser || cleanUser.length < 3) {
+      setErrorMsg('Trader Username must be at least 3 characters long.');
+      return;
+    }
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
     if (regPassword !== regConfirmPassword) {
       setErrorMsg('Passwords do not match. Please verify.');
       return;
@@ -75,8 +89,8 @@ export default function AuthView({ onLoginSuccess }) {
 
     try {
       const res = await register({
-        username: regUsername,
-        email: regUsername,
+        username: cleanUser,
+        email: cleanEmail,
         name: regName,
         password: regPassword,
       });
@@ -108,7 +122,6 @@ export default function AuthView({ onLoginSuccess }) {
         {/* Brand Header with Seamless Fintech Logo */}
         <div className="text-center space-y-2">
           <div className="max-w-[280px] sm:max-w-[320px] mx-auto relative group">
-            {/* Soft ambient emerald radial glow behind logo */}
             <div className="absolute inset-0 bg-emerald-500/15 blur-2xl rounded-full transform scale-75 pointer-events-none" />
             <img
               src="/logo-banner.png"
@@ -165,9 +178,25 @@ export default function AuthView({ onLoginSuccess }) {
 
           {/* Feedback Alerts */}
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-400 text-xs flex items-center space-x-2 animate-fadeIn">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="space-y-2 animate-fadeIn">
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-400 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              {errorMsg.toLowerCase().includes('already') && mode === 'register' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setLoginIdentifier(regEmail || regUsername);
+                    setErrorMsg('');
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs text-cyan-400 font-bold flex items-center justify-center space-x-2 transition"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Go to Sign In with this Account</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -264,17 +293,41 @@ export default function AuthView({ onLoginSuccess }) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
-                  Email or Username
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
+                    Trader Username
+                  </label>
+                  <span className="text-[10px] text-cyan-400/90 font-medium">Strictly Unique</span>
+                </div>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
+                  <User className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
                   <input
                     type="text"
                     required
+                    minLength={3}
                     value={regUsername}
                     onChange={(e) => setRegUsername(e.target.value)}
-                    placeholder="Enter your email or username"
+                    placeholder="Choose a unique username"
+                    className="w-full bg-black border border-neutral-800 rounded-xl pl-9 pr-3 py-2.5 text-xs sm:text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-cyan-400 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
+                    Email Address
+                  </label>
+                  <span className="text-[10px] text-cyan-400/90 font-medium">Cannot Be Reused</span>
+                </div>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
+                  <input
+                    type="email"
+                    required
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="your-email@gmail.com"
                     className="w-full bg-black border border-neutral-800 rounded-xl pl-9 pr-3 py-2.5 text-xs sm:text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-cyan-400 transition"
                   />
                 </div>
@@ -323,12 +376,17 @@ export default function AuthView({ onLoginSuccess }) {
                 </div>
               </div>
 
-              {/* RLS Privacy Notice */}
-              <div className="p-2.5 rounded-xl bg-neutral-900/60 border border-neutral-800 text-[11px] text-neutral-400 flex items-start space-x-2">
-                <Database className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Secure Multi-Tenant Journal:</strong> Private cloud & local sync with Row-Level Security. Existing trade history and diary entries are preserved and linked to your account.
-                </span>
+              {/* RLS Identity & Anti-Collision Guarantee */}
+              <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-[11px] text-neutral-300 space-y-1">
+                <div className="flex items-center space-x-1.5 text-cyan-400 font-semibold">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>Strict Identity Protection & Anti-Collision</span>
+                </div>
+                <div className="text-neutral-400 text-[10.5px] leading-relaxed">
+                  • Usernames and emails are strictly unique. Re-registration or impersonating an existing user is blocked.
+                  <br />
+                  • Existing trade history and diary entries are automatically preserved and linked.
+                </div>
               </div>
 
               <button

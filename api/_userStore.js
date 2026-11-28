@@ -108,11 +108,38 @@ export async function findUserById(userId) {
   return { id: u.id, username: u.username, email: u.email, name: u.name, created_at: u.created_at };
 }
 
+/**
+ * Creates a new user record with strict uniqueness enforcement.
+ * Throws DUPLICATE_USER error if the username or email is already taken.
+ * Never overwrites an existing user account.
+ */
 export async function createUser({ id, username, email, name, passwordHash }) {
+  const cleanUsername = username.trim().toLowerCase();
+  const cleanEmail = email.trim().toLowerCase();
+
+  // 1. Pre-validation: check if an account with this username or email already exists
+  const existingUser = await findUserByIdentifier(cleanUsername);
+  if (existingUser) {
+    const err = new Error(`The username "${cleanUsername}" is already taken by another trader. Please choose a different username.`);
+    err.code = 'DUPLICATE_USER';
+    err.field = 'username';
+    throw err;
+  }
+
+  if (cleanEmail && cleanEmail !== cleanUsername) {
+    const existingEmail = await findUserByIdentifier(cleanEmail);
+    if (existingEmail) {
+      const err = new Error(`The email "${cleanEmail}" is already registered to an existing account. No one can re-register or use an existing email.`);
+      err.code = 'DUPLICATE_USER';
+      err.field = 'email';
+      throw err;
+    }
+  }
+
   const userRecord = {
     id: id || `usr_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`,
-    username: username.trim().toLowerCase(),
-    email: email.trim().toLowerCase(),
+    username: cleanUsername,
+    email: cleanEmail,
     name: name.trim(),
     password_hash: passwordHash,
     created_at: Date.now(),
@@ -124,28 +151,35 @@ export async function createUser({ id, username, email, name, passwordHash }) {
       await ensureTables(sql);
       await sql`
         INSERT INTO delta_users (id, username, email, name, password_hash, created_at)
-        VALUES (${userRecord.id}, ${userRecord.username}, ${userRecord.email}, ${userRecord.name}, ${userRecord.password_hash}, ${userRecord.created_at})
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          email = EXCLUDED.email,
-          name = EXCLUDED.name,
-          password_hash = EXCLUDED.password_hash,
-          created_at = EXCLUDED.created_at;
+        VALUES (${userRecord.id}, ${userRecord.username}, ${userRecord.email}, ${userRecord.name}, ${userRecord.password_hash}, ${userRecord.created_at});
       `;
       return userRecord;
     } catch (err) {
+      // Check for PostgreSQL unique constraint violation (code 23505)
+      if (err.code === '23505' || err.message?.includes('duplicate key') || err.message?.includes('unique constraint')) {
+        const dupErr = new Error('This username or email is already registered and protected. It cannot be re-registered or used by another user.');
+        dupErr.code = 'DUPLICATE_USER';
+        throw dupErr;
+      }
       console.warn('Database createUser write warning (falling back to vault):', err.message);
     }
   }
 
-  // Local & in-memory vault fallback
+  // Local & in-memory vault fallback (with strict uniqueness check: NEVER overwrite)
   const vault = getLocalVault();
-  const existingIdx = vault.findIndex((u) => u.username === userRecord.username || u.email === userRecord.email);
-  if (existingIdx >= 0) {
-    vault[existingIdx] = userRecord;
-  } else {
-    vault.push(userRecord);
+  const duplicateInVault = vault.find(
+    (u) =>
+      (u.username && u.username.toLowerCase() === cleanUsername) ||
+      (u.email && u.email.toLowerCase() === cleanEmail)
+  );
+
+  if (duplicateInVault) {
+    const dupErr = new Error('This username or email is already registered and protected. It cannot be re-registered or used by another user.');
+    dupErr.code = 'DUPLICATE_USER';
+    throw dupErr;
   }
+
+  vault.push(userRecord);
   saveLocalVault(vault);
   return userRecord;
 }

@@ -59,16 +59,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
     }
 
-    // Check if username or email is already taken
-    const existing = await findUserByIdentifier(rawUsername);
-    if (existing) {
-      return res.status(409).json({ error: 'An account with this username or email already exists. Please sign in.' });
+    // 2. Strict Uniqueness Check: Nobody can use another person's username or email
+    const existingByUsername = await findUserByIdentifier(rawUsername);
+    if (existingByUsername) {
+      return res.status(409).json({
+        error: `The username "${rawUsername}" is already taken by another trader. Please choose a different username or sign in.`,
+        field: 'username',
+      });
     }
 
     if (rawEmail && rawEmail !== rawUsername) {
-      const existingEmail = await findUserByIdentifier(rawEmail);
-      if (existingEmail) {
-        return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
+      const existingByEmail = await findUserByIdentifier(rawEmail);
+      if (existingByEmail) {
+        return res.status(409).json({
+          error: `The email "${rawEmail}" is already registered to an existing account. No one can re-register or use an existing email. Please sign in.`,
+          field: 'email',
+        });
       }
     }
 
@@ -102,6 +108,18 @@ export default async function handler(req, res) {
       token,
     });
   } catch (error) {
+    if (
+      error.code === 'DUPLICATE_USER' ||
+      error.message?.includes('already in use') ||
+      error.message?.includes('already registered') ||
+      error.message?.includes('already taken')
+    ) {
+      return res.status(409).json({
+        error: error.message || 'This username or email is already registered and protected. Please sign in.',
+        field: error.field || 'general',
+      });
+    }
+
     console.error('Server Registration Error:', error);
     return res.status(500).json({
       error: error.message || 'An unexpected server error occurred during registration.',

@@ -82,13 +82,16 @@ export async function ensureTables(sql) {
       // Column 'data' does not exist or is already nullable
     }
 
-    // Ensure lookup indexes exist
+    // 4. Strict Uniqueness Enforcement:
+    // Ensure no one can ever insert a duplicate username or duplicate email at the database engine level
     try {
-      await sql`CREATE INDEX IF NOT EXISTS delta_users_username_idx ON delta_users (LOWER(username));`;
-      await sql`CREATE INDEX IF NOT EXISTS delta_users_email_idx ON delta_users (LOWER(email));`;
-    } catch (e) {}
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS delta_users_unique_username ON delta_users (LOWER(username)) WHERE username IS NOT NULL;`;
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS delta_users_unique_email ON delta_users (LOWER(email)) WHERE email IS NOT NULL;`;
+    } catch (idxErr) {
+      console.warn('Unique index enforcement notice:', idxErr.message);
+    }
 
-    // 4. Sessions table
+    // 5. Sessions table
     await sql`
       CREATE TABLE IF NOT EXISTS delta_sessions (
         token TEXT PRIMARY KEY,
