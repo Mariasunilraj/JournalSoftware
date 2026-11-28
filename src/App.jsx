@@ -62,7 +62,7 @@ export default function App() {
   const [trades, setTrades] = useState(() => {
     const session = getActiveSession();
     if (session) {
-      return loadUserData(session.id).trades;
+      return loadUserData(session.id, session.email, session.username).trades;
     }
     return [];
   });
@@ -70,7 +70,7 @@ export default function App() {
   const [diary, setDiary] = useState(() => {
     const session = getActiveSession();
     if (session) {
-      return loadUserData(session.id).diary;
+      return loadUserData(session.id, session.email, session.username).diary;
     }
     return [];
   });
@@ -78,7 +78,7 @@ export default function App() {
   const [capitalLogs, setCapitalLogs] = useState(() => {
     const session = getActiveSession();
     if (session) {
-      return loadUserData(session.id).capitalLogs;
+      return loadUserData(session.id, session.email, session.username).capitalLogs;
     }
     return [];
   });
@@ -86,7 +86,7 @@ export default function App() {
   const [settings, setSettings] = useState(() => {
     const session = getActiveSession();
     if (session) {
-      const s = loadUserData(session.id).settings;
+      const s = loadUserData(session.id, session.email, session.username).settings;
       return { ...s, initialCapital: Number(s?.initialCapital) || 0 };
     }
     return { initialCapital: 0, maxDailyLoss: 5000, maxDailyTrades: 5, defaultBrokeragePerOrder: 20 };
@@ -205,7 +205,7 @@ export default function App() {
   // Handle successful login or registration
   const handleLoginSuccess = useCallback((user) => {
     setCurrentUser(user);
-    const data = loadUserData(user.id);
+    const data = loadUserData(user.id, user.email, user.username);
     setTrades(data.trades);
     setDiary(data.diary);
     setCapitalLogs(data.capitalLogs);
@@ -235,6 +235,7 @@ export default function App() {
     setTrades([]);
     setDiary([]);
     setCapitalLogs([]);
+    setSettings({ initialCapital: 0, maxDailyLoss: 5000, maxDailyTrades: 5, defaultBrokeragePerOrder: 20 });
   }, []);
 
   // Calculate live analytics

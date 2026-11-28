@@ -2,14 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getDatabase, ensureTables } from './_db.js';
 
-// On Vercel Serverless / AWS Lambda, /var/task is read-only.
-// Use /tmp which is the designated writable temporary directory.
 const LOCAL_VAULT_PATH =
   process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production'
     ? path.join('/tmp', 'server_users_vault.json')
     : path.resolve(process.cwd(), '.storage', 'server_users_vault.json');
 
-// In-memory cache fallback to guarantee persistence during active Lambda execution context
 let inMemoryVault = [];
 
 function getLocalVault() {
@@ -17,7 +14,6 @@ function getLocalVault() {
     if (fs.existsSync(LOCAL_VAULT_PATH)) {
       const data = JSON.parse(fs.readFileSync(LOCAL_VAULT_PATH, 'utf-8'));
       if (Array.isArray(data) && data.length > 0) {
-        // Merge with inMemoryVault
         const map = new Map();
         for (const u of data) map.set(u.id, u);
         for (const u of inMemoryVault) map.set(u.id, u);
@@ -36,16 +32,20 @@ function saveLocalVault(users) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(LOCAL_VAULT_PATH, JSON.stringify(users, null, 2), 'utf-8');
   } catch (e) {
-    // Filesystem write failed, inMemoryVault remains available
     console.warn('saveLocalVault filesystem notice:', e.message);
   }
 }
 
+/**
+ * Finds user by username, email, or handle prefix.
+ * Guarantees that handles like 'mariasunilraj8' match 'mariasunilraj8@gmail.com'
+ * to prevent any other person from claiming an existing user's handle.
+ */
 export async function findUserByIdentifier(identifier) {
   if (!identifier) return null;
   const clean = String(identifier).trim().toLowerCase();
-  // Support both mariasunilraj8@gmail.com and mariasunilraj8gmail.com variants
-  const altClean = clean.includes('@') ? clean.replace('@', '') : clean.replace('gmail.com', '@gmail.com');
+  const handle = clean.includes('@') ? clean.split('@')[0] : clean;
+  const altClean = clean.includes('@') ? clean.replace('@', '') : `${clean}@gmail.com`;
 
   const sql = getDatabase();
   if (sql) {
@@ -54,8 +54,13 @@ export async function findUserByIdentifier(identifier) {
       const rows = await sql`
         SELECT id, username, email, name, password_hash, created_at
         FROM delta_users
-        WHERE LOWER(username) = ${clean} OR LOWER(email) = ${clean}
-           OR LOWER(username) = ${altClean} OR LOWER(email) = ${altClean}
+        WHERE LOWER(username) = ${clean}
+           OR LOWER(email) = ${clean}
+           OR LOWER(username) = ${altClean}
+           OR LOWER(email) = ${altClean}
+           OR LOWER(username) = ${handle}
+           OR SPLIT_PART(LOWER(email), '@', 1) = ${handle}
+           OR SPLIT_PART(LOWER(username), '@', 1) = ${handle}
         LIMIT 1;
       `;
       if (rows && rows.length > 0) {
@@ -72,8 +77,17 @@ export async function findUserByIdentifier(identifier) {
   return (
     vault.find(
       (u) =>
-        (u.username && (u.username.toLowerCase() === clean || u.username.toLowerCase() === altClean)) ||
-        (u.email && (u.email.toLowerCase() === clean || u.email.toLowerCase() === altClean))
+        (u.username && (
+          u.username.toLowerCase() === clean ||
+          u.username.toLowerCase() === altClean ||
+          u.username.toLowerCase() === handle ||
+          u.username.toLowerCase().split('@')[0] === handle
+        )) ||
+        (u.email && (
+          u.email.toLowerCase() === clean ||
+          u.email.toLowerCase() === altClean ||
+          u.email.toLowerCase().split('@')[0] === handle
+        ))
     ) || null
   );
 }
@@ -101,7 +115,6 @@ export async function findUserById(userId) {
     }
   }
 
-  // Local & in-memory vault fallback
   const vault = getLocalVault();
   const u = vault.find((v) => v.id === cleanId);
   if (!u) return null;
@@ -110,17 +123,17 @@ export async function findUserById(userId) {
 
 /**
  * Creates a new user record with strict uniqueness enforcement.
- * Throws DUPLICATE_USER error if the username or email is already taken.
+ * Throws DUPLICATE_USER error if the username, email, or handle is already registered.
  * Never overwrites an existing user account.
  */
 export async function createUser({ id, username, email, name, passwordHash }) {
   const cleanUsername = username.trim().toLowerCase();
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. Pre-validation: check if an account with this username or email already exists
+  // 1. Pre-validation: check if an account with this username or handle already exists
   const existingUser = await findUserByIdentifier(cleanUsername);
   if (existingUser) {
-    const err = new Error(`The username "${cleanUsername}" is already taken by another trader. Please choose a different username.`);
+    const err = new Error(`The username "${cleanUsername}" is already reserved by another trader. Please choose a different username.`);
     err.code = 'DUPLICATE_USER';
     err.field = 'username';
     throw err;
@@ -155,7 +168,6 @@ export async function createUser({ id, username, email, name, passwordHash }) {
       `;
       return userRecord;
     } catch (err) {
-      // Check for PostgreSQL unique constraint violation (code 23505)
       if (err.code === '23505' || err.message?.includes('duplicate key') || err.message?.includes('unique constraint')) {
         const dupErr = new Error('This username or email is already registered and protected. It cannot be re-registered or used by another user.');
         dupErr.code = 'DUPLICATE_USER';
@@ -165,7 +177,7 @@ export async function createUser({ id, username, email, name, passwordHash }) {
     }
   }
 
-  // Local & in-memory vault fallback (with strict uniqueness check: NEVER overwrite)
+  // Local & in-memory vault fallback (with strict uniqueness check)
   const vault = getLocalVault();
   const duplicateInVault = vault.find(
     (u) =>

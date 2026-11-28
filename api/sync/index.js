@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   try {
     await ensureTables(sql);
 
-    // GET /api/sync - fetch authenticated user's records
+    // GET /api/sync - fetch authenticated user's records strictly isolated to their userId
     if (req.method === 'GET') {
       const rows = await sql`
         SELECT trades, diary, capital_logs, settings, updated_at
@@ -56,45 +56,51 @@ export default async function handler(req, res) {
         });
       }
 
-      // Seamless Legacy Data Recovery:
-      // If the authenticated user has 0 records, check if legacy trades exist in the database
-      // under Sunil's former account ID or default partition so history is never lost!
-      try {
-        const legacyRows = await sql`
-          SELECT trades, diary, capital_logs, settings, updated_at
-          FROM delta_sync_records
-          WHERE user_id IN ('usr_sunil_08', 'default', 'usr_default', 'usr_maria_sunil_raj')
-          ORDER BY updated_at DESC
-          LIMIT 1;
-        `;
+      // STRICT MULTI-TENANT ISOLATION:
+      // Only Sunil's verified account (mariasunilraj8@gmail.com) can recover legacy trades from 'usr_sunil_08'.
+      // Any other user strictly gets empty arrays (zero initial data).
+      const isSunil =
+        (sessionUser.email && sessionUser.email.toLowerCase() === 'mariasunilraj8@gmail.com') ||
+        (sessionUser.username && sessionUser.username.toLowerCase() === 'mariasunilraj8');
 
-        if (legacyRows && legacyRows.length > 0 && Array.isArray(legacyRows[0].trades) && legacyRows[0].trades.length > 0) {
-          const leg = legacyRows[0];
-          // Auto-link to the new authenticated user
-          await sql`
-            INSERT INTO delta_sync_records (user_id, trades, diary, capital_logs, settings, updated_at)
-            VALUES (${userId}, ${JSON.stringify(leg.trades)}::jsonb, ${JSON.stringify(leg.diary || [])}::jsonb, ${JSON.stringify(leg.capital_logs || [])}::jsonb, ${JSON.stringify(leg.settings || null)}::jsonb, ${Date.now()})
-            ON CONFLICT (user_id) DO UPDATE SET
-              trades = EXCLUDED.trades,
-              diary = EXCLUDED.diary,
-              capital_logs = EXCLUDED.capital_logs,
-              settings = EXCLUDED.settings,
-              updated_at = EXCLUDED.updated_at;
+      if (isSunil) {
+        try {
+          const legacyRows = await sql`
+            SELECT trades, diary, capital_logs, settings, updated_at
+            FROM delta_sync_records
+            WHERE user_id IN ('usr_sunil_08', 'default', 'usr_default', 'usr_maria_sunil_raj')
+            ORDER BY updated_at DESC
+            LIMIT 1;
           `;
 
-          return res.status(200).json({
-            trades: leg.trades || [],
-            diary: leg.diary || [],
-            capitalLogs: leg.capital_logs || [],
-            settings: leg.settings || null,
-            updatedAt: Number(leg.updated_at || 0),
-            recoveredFromLegacy: true,
-          });
+          if (legacyRows && legacyRows.length > 0 && Array.isArray(legacyRows[0].trades) && legacyRows[0].trades.length > 0) {
+            const leg = legacyRows[0];
+            await sql`
+              INSERT INTO delta_sync_records (user_id, trades, diary, capital_logs, settings, updated_at)
+              VALUES (${userId}, ${JSON.stringify(leg.trades)}::jsonb, ${JSON.stringify(leg.diary || [])}::jsonb, ${JSON.stringify(leg.capital_logs || [])}::jsonb, ${JSON.stringify(leg.settings || null)}::jsonb, ${Date.now()})
+              ON CONFLICT (user_id) DO UPDATE SET
+                trades = EXCLUDED.trades,
+                diary = EXCLUDED.diary,
+                capital_logs = EXCLUDED.capital_logs,
+                settings = EXCLUDED.settings,
+                updated_at = EXCLUDED.updated_at;
+            `;
+
+            return res.status(200).json({
+              trades: leg.trades || [],
+              diary: leg.diary || [],
+              capitalLogs: leg.capital_logs || [],
+              settings: leg.settings || null,
+              updatedAt: Number(leg.updated_at || 0),
+              recoveredFromLegacy: true,
+            });
+          }
+        } catch (recoveryErr) {
+          console.warn('Legacy sync recovery notice:', recoveryErr.message);
         }
-      } catch (recoveryErr) {
-        console.warn('Legacy sync recovery notice:', recoveryErr.message);
       }
 
+      // Any other user gets 0 initial trades (100% private and empty)
       return res.status(200).json({
         trades: [],
         diary: [],
@@ -104,7 +110,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // POST /api/sync - push authenticated user's records
+    // POST /api/sync - push authenticated user's records strictly isolated to their userId
     if (req.method === 'POST') {
       let body;
       try {
@@ -152,10 +158,6 @@ export default async function handler(req, res) {
       const rawTrades = Array.isArray(body.trades) ? body.trades : [];
       let cleanTrades = rawTrades.filter((t) => t && t.id && !deletedSet.has(t.id));
 
-      // CRITICAL SERVER-SIDE DEFENSE:
-      // If client is reporting trade deletions, but rawTrades is empty,
-      // and this is NOT an explicit full reset (isFullReset !== true):
-      // NEVER wipe out all trades! Instead, load the existing trades from the DB and remove ONLY the deleted IDs!
       if (deletedIds.length > 0 && cleanTrades.length === 0 && !body.isFullReset) {
         const existingRows = await sql`
           SELECT trades FROM delta_sync_records WHERE user_id = ${userId} LIMIT 1;

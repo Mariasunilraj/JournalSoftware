@@ -91,11 +91,19 @@ export function wipeUserAccountData(userId) {
 }
 
 /**
- * Automatically migrates existing local browser trades (from prior Sunil or legacy partitions)
- * into a newly registered or authenticated user partition so past trade history is never lost.
+ * Preserves legacy local browser trades ONLY for Sunil's verified account.
+ * For any other user, strictly returns false so every account starts 100% empty (Zero Data Leakage).
  */
-export function migrateLegacyDataForUser(userId) {
+export function migrateLegacyDataForUser(userId, userEmail, userName) {
   if (!userId) return false;
+  const isSunil =
+    (userEmail && userEmail.toLowerCase() === 'mariasunilraj8@gmail.com') ||
+    (userName && userName.toLowerCase() === 'mariasunilraj8');
+
+  if (!isSunil) {
+    return false; // Zero data leakage: new traders start completely empty
+  }
+
   const keys = getUserStorageKeys(userId);
 
   try {
@@ -105,54 +113,20 @@ export function migrateLegacyDataForUser(userId) {
       return false; // User already has trades in their active partition
     }
 
-    // Candidate legacy partitions in browser localStorage
-    const candidateKeys = [
-      'delta_usr_usr_sunil_08_trades_v2',
-      'delta_usr_guest_trades_v2',
-      LEGACY_TRADES_KEY,
-    ];
+    const candRaw = localStorage.getItem('delta_usr_usr_sunil_08_trades_v2');
+    if (candRaw) {
+      const candTrades = JSON.parse(candRaw);
+      if (Array.isArray(candTrades) && candTrades.length > 0) {
+        const migrated = candTrades.map((t) => ({ ...t, userId }));
+        localStorage.setItem(keys.trades, JSON.stringify(migrated));
 
-    // Scan for any other prior partition in localStorage
-    if (typeof localStorage !== 'undefined') {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('delta_usr_') && k.endsWith('_trades_v2') && k !== keys.trades) {
-          if (!candidateKeys.includes(k)) {
-            candidateKeys.push(k);
-          }
-        }
-      }
-    }
-
-    for (const candKey of candidateKeys) {
-      const candRaw = localStorage.getItem(candKey);
-      if (candRaw) {
-        try {
-          const candTrades = JSON.parse(candRaw);
-          if (Array.isArray(candTrades) && candTrades.length > 0) {
-            // Re-assign userId to the newly authenticated user
-            const migrated = candTrades.map((t) => ({ ...t, userId }));
-            localStorage.setItem(keys.trades, JSON.stringify(migrated));
-
-            // Also migrate diary, capital, settings if present
-            if (candKey === 'delta_usr_usr_sunil_08_trades_v2') {
-              const diary = localStorage.getItem('delta_usr_usr_sunil_08_diary_v2');
-              if (diary) localStorage.setItem(keys.diary, diary);
-              const cap = localStorage.getItem('delta_usr_usr_sunil_08_capital_v2');
-              if (cap) localStorage.setItem(keys.capital, cap);
-              const sett = localStorage.getItem('delta_usr_usr_sunil_08_settings_v2');
-              if (sett) localStorage.setItem(keys.settings, sett);
-            } else if (candKey === LEGACY_TRADES_KEY) {
-              const diary = localStorage.getItem(LEGACY_DIARY_KEY);
-              if (diary) localStorage.setItem(keys.diary, diary);
-              const cap = localStorage.getItem(LEGACY_CAPITAL_KEY);
-              if (cap) localStorage.setItem(keys.capital, cap);
-              const sett = localStorage.getItem(LEGACY_SETTINGS_KEY);
-              if (sett) localStorage.setItem(keys.settings, sett);
-            }
-            return true;
-          }
-        } catch (e) {}
+        const diary = localStorage.getItem('delta_usr_usr_sunil_08_diary_v2');
+        if (diary) localStorage.setItem(keys.diary, diary);
+        const cap = localStorage.getItem('delta_usr_usr_sunil_08_capital_v2');
+        if (cap) localStorage.setItem(keys.capital, cap);
+        const sett = localStorage.getItem('delta_usr_usr_sunil_08_settings_v2');
+        if (sett) localStorage.setItem(keys.settings, sett);
+        return true;
       }
     }
   } catch (err) {
@@ -162,30 +136,26 @@ export function migrateLegacyDataForUser(userId) {
 }
 
 /**
- * Recovers all trades found across any local browser storage partitions and links them to the active user
+ * Recovers trades found in Sunil's partition only for Sunil's account
  */
-export function recoverAnyLocalTrades(userId) {
+export function recoverAnyLocalTrades(userId, userEmail) {
   if (!userId || typeof localStorage === 'undefined') return 0;
+  if (!userEmail || userEmail.toLowerCase() !== 'mariasunilraj8@gmail.com') return 0;
   const keys = getUserStorageKeys(userId);
   const totalFound = [];
   const seenIds = new Set();
 
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && (k.includes('trades') || k === LEGACY_TRADES_KEY)) {
-        try {
-          const raw = localStorage.getItem(k);
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) {
-            for (const item of list) {
-              if (item && item.symbol && (!item.id || !seenIds.has(item.id))) {
-                if (item.id) seenIds.add(item.id);
-                totalFound.push({ ...item, userId });
-              }
-            }
+    const raw = localStorage.getItem('delta_usr_usr_sunil_08_trades_v2');
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && item.symbol && (!item.id || !seenIds.has(item.id))) {
+            if (item.id) seenIds.add(item.id);
+            totalFound.push({ ...item, userId });
           }
-        } catch (e) {}
+        }
       }
     }
 
@@ -201,9 +171,9 @@ export function recoverAnyLocalTrades(userId) {
 
 /**
  * Load user data with strict Row-Level Security (RLS)
- * Zero initial data for fresh browsers, automatic preservation of existing local trade history
+ * Zero initial data for fresh accounts, complete tenant isolation
  */
-export function loadUserData(userId) {
+export function loadUserData(userId, userEmail, userName) {
   if (!userId) {
     return {
       trades: [],
@@ -213,8 +183,8 @@ export function loadUserData(userId) {
     };
   }
 
-  // Preserve existing trade history if user is logging into a newly created account on this browser
-  migrateLegacyDataForUser(userId);
+  // Preserve Sunil's legacy trade history ONLY if the logged in user is Sunil
+  migrateLegacyDataForUser(userId, userEmail, userName);
 
   const keys = getUserStorageKeys(userId);
 
@@ -229,16 +199,16 @@ export function loadUserData(userId) {
     let capitalLogs = rawCapital ? JSON.parse(rawCapital) : [];
     let settings = rawSettings ? JSON.parse(rawSettings) : DEFAULT_RISK_SETTINGS;
 
-    // Strict RLS filter & Tombstone purge: ensure deleted trades are never resurrected
+    // Strict RLS filter: ensure trades belong strictly to this user
     const deletedIds = getDeletedTradeIds(userId);
     const deletedSet = new Set(deletedIds);
 
     trades = (trades || [])
       .filter((t) => !deletedSet.has(t.id))
-      .filter((t) => !t.userId || t.userId === userId)
+      .filter((t) => t.userId === userId)
       .map((t) => ({ ...t, userId }));
-    diary = (diary || []).filter((d) => !d.userId || d.userId === userId).map((d) => ({ ...d, userId }));
-    capitalLogs = (capitalLogs || []).filter((c) => !c.userId || c.userId === userId).map((c) => ({ ...c, userId }));
+    diary = (diary || []).filter((d) => d.userId === userId).map((d) => ({ ...d, userId }));
+    capitalLogs = (capitalLogs || []).filter((c) => c.userId === userId).map((c) => ({ ...c, userId }));
 
     return { trades, diary, capitalLogs, settings };
   } catch (err) {
@@ -258,7 +228,7 @@ export function loadUserData(userId) {
 export function loadInitialData() {
   const session = getActiveSession();
   if (session && session.id) {
-    return loadUserData(session.id);
+    return loadUserData(session.id, session.email, session.username);
   }
   return {
     trades: [],

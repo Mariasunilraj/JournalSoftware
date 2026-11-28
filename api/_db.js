@@ -4,7 +4,6 @@ let sqlClient = null;
 let isInitialized = false;
 
 export function getDatabase() {
-  // Support STORAGE_URL (from Vercel Neon integration), POSTGRES_URL, DATABASE_URL, or any postgres connection string
   let connectionString =
     process.env.STORAGE_URL ||
     process.env.POSTGRES_URL ||
@@ -12,7 +11,6 @@ export function getDatabase() {
     process.env.STORAGE_DATABASE_URL ||
     process.env.NEON_DATABASE_URL;
 
-  // Fallback: Dynamically search for any env var containing a postgres connection URL
   if (!connectionString) {
     const matchingKey = Object.keys(process.env).find(
       (k) =>
@@ -63,8 +61,6 @@ export async function ensureTables(sql) {
     `;
 
     // 3. Schema migration for delta_users:
-    // If delta_users was previously created with legacy schema (id, data, updated_at),
-    // add missing columns and relax constraints so modern auth succeeds
     try {
       await sql`ALTER TABLE delta_users ADD COLUMN IF NOT EXISTS username TEXT;`;
       await sql`ALTER TABLE delta_users ADD COLUMN IF NOT EXISTS email TEXT;`;
@@ -75,15 +71,39 @@ export async function ensureTables(sql) {
       console.warn('Columns already up-to-date or migration skipped:', migErr.message);
     }
 
-    // If legacy 'data' column has a NOT NULL constraint, drop it so inserts without 'data' succeed
     try {
       await sql`ALTER TABLE delta_users ALTER COLUMN data DROP NOT NULL;`;
-    } catch (e) {
-      // Column 'data' does not exist or is already nullable
+    } catch (e) {}
+
+    // 4. Clean up test collision accounts & normalize Sunil's primary identity
+    try {
+      // Purge any test account that used mariasunilraj8 with a different email
+      await sql`
+        DELETE FROM delta_users
+        WHERE (LOWER(username) = 'mariasunilraj8' OR LOWER(email) LIKE 'mariasunilraj8%')
+          AND LOWER(email) != 'mariasunilraj8@gmail.com';
+      `;
+
+      // Wipe any sync records that might have accidentally copied Sunil's trades to non-Sunil test users
+      await sql`
+        DELETE FROM delta_sync_records
+        WHERE user_id NOT IN (
+          SELECT id FROM delta_users WHERE LOWER(email) = 'mariasunilraj8@gmail.com'
+        )
+        AND user_id NOT IN ('usr_sunil_08', 'default', 'usr_default');
+      `;
+
+      // Normalize Sunil's account so username is 'mariasunilraj8' and email is 'mariasunilraj8@gmail.com'
+      await sql`
+        UPDATE delta_users
+        SET username = 'mariasunilraj8', email = 'mariasunilraj8@gmail.com', name = 'Maria Sunil Raj'
+        WHERE LOWER(email) = 'mariasunilraj8@gmail.com' OR LOWER(username) = 'mariasunilraj8@gmail.com';
+      `;
+    } catch (cleanErr) {
+      console.warn('Account normalization notice:', cleanErr.message);
     }
 
-    // 4. Strict Uniqueness Enforcement:
-    // Ensure no one can ever insert a duplicate username or duplicate email at the database engine level
+    // 5. Strict Uniqueness Enforcement:
     try {
       await sql`CREATE UNIQUE INDEX IF NOT EXISTS delta_users_unique_username ON delta_users (LOWER(username)) WHERE username IS NOT NULL;`;
       await sql`CREATE UNIQUE INDEX IF NOT EXISTS delta_users_unique_email ON delta_users (LOWER(email)) WHERE email IS NOT NULL;`;
@@ -91,7 +111,7 @@ export async function ensureTables(sql) {
       console.warn('Unique index enforcement notice:', idxErr.message);
     }
 
-    // 5. Sessions table
+    // 6. Sessions table
     await sql`
       CREATE TABLE IF NOT EXISTS delta_sessions (
         token TEXT PRIMARY KEY,
@@ -104,6 +124,5 @@ export async function ensureTables(sql) {
     isInitialized = true;
   } catch (err) {
     console.error('ensureTables migration warning:', err);
-    // Do not throw so caller functions can still operate or use fallbacks
   }
 }
