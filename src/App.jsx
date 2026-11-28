@@ -561,7 +561,7 @@ export default function App() {
           onOpenInstallApp={() => setIsInstallModalOpen(true)}
         />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-24 lg:pb-8 min-w-0">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-2 lg:pb-8 min-w-0">
           <ErrorBoundary>
             {activeTab === 'trades' && (
               <TradeLog
@@ -620,9 +620,9 @@ export default function App() {
           </ErrorBoundary>
         </main>
 
-        {/* Footer */}
-        <footer className="no-print border-t border-neutral-900 bg-black py-4 pb-24 lg:pb-4 text-center text-xs text-neutral-500">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        {/* Footer (Desktop only; on mobile, the disclaimer sits cleanly above BottomNav) */}
+        <footer className="hidden lg:block no-print border-t border-neutral-900 bg-black py-4 text-center text-xs text-neutral-500">
+          <div className="max-w-7xl mx-auto px-4 flex flex-row items-center justify-between gap-2">
             <span>DELTA JOURNAL • Fintech High-Precision Trading Terminal</span>
             <span className="text-neutral-400">NSE / BSE Equity & Derivatives</span>
           </div>

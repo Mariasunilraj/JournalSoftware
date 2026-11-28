@@ -353,7 +353,7 @@ export default function Dashboard({
   }, [hasTrades, safeTrades]);
 
   return (
-    <div className="space-y-3.5 pb-28 max-w-4xl mx-auto w-full min-w-0 px-0.5">
+    <div className="space-y-3.5 pb-0 max-w-4xl mx-auto w-full min-w-0 px-0.5">
       {/* Top Title Bar: Dashboard (Time filter pill removed per request) */}
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <div className="flex items-center space-x-2">
@@ -677,6 +677,13 @@ export default function Dashboard({
             );
           })}
         </div>
+      </div>
+
+      {/* Disclaimer Line directly below Recent Activity */}
+      <div className="pt-2 pb-20 text-center select-none px-2">
+        <p className="text-[10px] sm:text-[11px] text-neutral-400 font-medium">
+          ⚠️ Disclaimer: Futures &amp; Options trading involves substantial risk of loss. For journaling &amp; performance tracking only.
+        </p>
       </div>
     </div>
   );
