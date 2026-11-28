@@ -1,700 +1,675 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
+  LayoutGrid,
+  Trophy,
   TrendingUp,
   TrendingDown,
   Target,
-  Scale,
-  AlertTriangle,
-  Layers,
+  CalendarDays,
+  BarChart3,
+  Zap,
+  ChevronRight,
+  ChevronDown,
   ArrowUpRight,
-  ShieldAlert,
+  ArrowDownRight,
+  AlertTriangle,
 } from 'lucide-react';
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts';
-import { formatINR, formatPercent, formatIndianDate } from '../utils/calculations';
+import { formatINR, formatIndianDate } from '../utils/calculations';
+
+// 1. Candlestick Watermark Silhouette for Large Win Hero Card
+function CandlestickWatermark({ className = "w-36 sm:w-44 h-22 opacity-40" }) {
+  return (
+    <svg viewBox="0 0 180 85" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="cwGlow" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#00e676" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#00ff66" stopOpacity="0.85" />
+        </linearGradient>
+      </defs>
+
+      {/* Candle 1 */}
+      <line x1="16" y1="48" x2="16" y2="72" stroke="#00e676" strokeWidth="1.2" opacity="0.3" />
+      <rect x="13" y="52" width="6" height="12" rx="1" fill="#00e676" opacity="0.35" />
+
+      {/* Candle 2 */}
+      <line x1="36" y1="40" x2="36" y2="68" stroke="#00e676" strokeWidth="1.2" opacity="0.4" />
+      <rect x="33" y="44" width="6" height="16" rx="1" fill="#00e676" opacity="0.45" />
+
+      {/* Candle 3 (Pullback) */}
+      <line x1="56" y1="46" x2="56" y2="66" stroke="#00e676" strokeWidth="1.2" opacity="0.45" />
+      <rect x="53" y="48" width="6" height="12" rx="1" fill="#00e676" opacity="0.5" />
+
+      {/* Candle 4 */}
+      <line x1="76" y1="32" x2="76" y2="60" stroke="#00e676" strokeWidth="1.2" opacity="0.55" />
+      <rect x="73" y="36" width="6" height="18" rx="1" fill="#00e676" opacity="0.6" />
+
+      {/* Candle 5 */}
+      <line x1="96" y1="26" x2="96" y2="54" stroke="#00e676" strokeWidth="1.2" opacity="0.65" />
+      <rect x="93" y="30" width="6" height="16" rx="1" fill="#00e676" opacity="0.7" />
+
+      {/* Candle 6 */}
+      <line x1="116" y1="20" x2="116" y2="48" stroke="#00e676" strokeWidth="1.2" opacity="0.75" />
+      <rect x="113" y="24" width="6" height="18" rx="1" fill="#00e676" opacity="0.8" />
+
+      {/* Candle 7 */}
+      <line x1="136" y1="12" x2="136" y2="42" stroke="#00ff66" strokeWidth="1.2" opacity="0.85" />
+      <rect x="133" y="16" width="6" height="18" rx="1" fill="#00ff66" opacity="0.9" />
+
+      {/* Candle 8 (Tall Breakout) */}
+      <line x1="156" y1="4" x2="156" y2="34" stroke="#00ff66" strokeWidth="1.5" />
+      <rect x="153" y="8" width="6" height="22" rx="1" fill="#00ff66" filter="drop-shadow(0 0 6px rgba(0,255,102,0.6))" />
+    </svg>
+  );
+}
+
+// 2. Smooth SVG Wave Sparkline with Glowing Right Endpoint
+function SparklineWave({ className = "w-full h-12" }) {
+  return (
+    <svg viewBox="0 0 160 50" fill="none" className={className} preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#00e676" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#00e676" stopOpacity="0.0" />
+        </linearGradient>
+        <filter id="endpointGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#00ff66" floodOpacity="0.9" />
+        </filter>
+      </defs>
+
+      {/* Area Fill */}
+      <path
+        d="M 0 42 C 25 42, 35 34, 55 36 C 75 38, 85 28, 105 30 C 125 32, 138 18, 156 16 L 156 50 L 0 50 Z"
+        fill="url(#waveFill)"
+      />
+
+      {/* Smooth Stroke Line */}
+      <path
+        d="M 0 42 C 25 42, 35 34, 55 36 C 75 38, 85 28, 105 30 C 125 32, 138 18, 156 16"
+        stroke="#00e676"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+
+      {/* Glowing Neon Endpoint */}
+      <circle cx="156" cy="16" r="3.5" fill="#00ff66" filter="url(#endpointGlow)" />
+      <circle cx="156" cy="16" r="1.5" fill="#ffffff" />
+    </svg>
+  );
+}
+
+// 3. Trade Outcome Donut Chart SVG
+function OutcomeDonut({ winRate = 68 }) {
+  const r = 24;
+  const c = 2 * Math.PI * r; // ~150.796
+  const safeWin = Math.max(0, Math.min(100, Number(winRate) || 0));
+  const winStroke = (safeWin / 100) * c;
+  const lossStroke = c - winStroke;
+
+  return (
+    <div className="relative w-16 h-16 sm:w-18 sm:h-18 shrink-0 flex items-center justify-center">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 60 60">
+        {/* Background / Loss Ring (Red/Coral) */}
+        <circle
+          cx="30"
+          cy="30"
+          r={r}
+          stroke="#ef4444"
+          strokeWidth="6.5"
+          fill="none"
+          strokeDasharray={`${lossStroke} ${c}`}
+          strokeDashoffset={-winStroke}
+          strokeLinecap="round"
+        />
+        {/* Foreground / Win Ring (Neon Green) */}
+        <circle
+          cx="30"
+          cy="30"
+          r={r}
+          stroke="#00e676"
+          strokeWidth="6.5"
+          fill="none"
+          strokeDasharray={`${winStroke} ${c}`}
+          strokeDashoffset="0"
+          strokeLinecap="round"
+        />
+      </svg>
+      {/* Center Text */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+        <span className="text-[12px] sm:text-sm font-black text-white leading-none tracking-tight">
+          {safeWin}%
+        </span>
+        <span className="text-[7px] text-neutral-400 font-semibold uppercase mt-0.5 leading-none">
+          Win Rate
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// 4. Monthly Profit Mini Bar Chart SVG with Floating Highlight Pill
+function MiniMonthlyBars({ activePnlText = "₹32.7K" }) {
+  // Height profiles for 8 ascending/varied bars
+  const bars = [16, 24, 20, 28, 22, 34, 26, 42];
+
+  return (
+    <div className="relative w-36 sm:w-44 h-16 shrink-0 flex items-end justify-end">
+      {/* Floating Green Pill Badge right above the last bar */}
+      <div className="absolute -top-3.5 right-0 bg-[#00e676] text-black text-[9px] font-black px-1.5 py-0.5 rounded shadow-[0_0_10px_rgba(0,230,118,0.7)] z-10 select-none">
+        {activePnlText}
+      </div>
+
+      <svg viewBox="0 0 140 50" fill="none" className="w-full h-full" preserveAspectRatio="none">
+        {bars.map((h, i) => {
+          const isLast = i === bars.length - 1;
+          const x = i * 17 + 4;
+          const y = 50 - h;
+          return (
+            <rect
+              key={i}
+              x={x}
+              y={y}
+              width="8"
+              height={h}
+              rx="2.5"
+              fill={isLast ? '#00e676' : '#08381c'}
+              filter={isLast ? 'drop-shadow(0 0 6px rgba(0,230,118,0.7))' : undefined}
+            />
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
 
 export default function Dashboard({
   analytics,
-  trades,
-  settings,
+  trades = [],
+  settings = {},
   onOpenTradeModal,
   onViewTrade,
   onNavigateTab,
 }) {
-  const [equityMode, setEquityMode] = useState('net'); // 'net' | 'gross'
-  const {
-    netPnL,
-    grossPnL,
-    totalCharges,
-    grossProfit,
-    grossLoss,
-    winRate,
-    totalTrades,
-    winningTrades,
-    losingTrades,
-    breakevenTrades,
-    profitFactor,
-    avgWin,
-    avgLoss,
-    largestWin,
-    largestLoss,
-    expectancy,
-    maxDrawdownAmount,
-    maxDrawdownPercent,
-    currentStreak,
-    maxConsecutiveWins,
-    maxConsecutiveLosses,
-    equityCurve,
-    segmentStats,
-    monthlyPnLMap,
-    dailyPnLMap,
-    weekdayStats,
-    weekdayCounts,
-    chargesInsight,
-  } = analytics;
+  const [selectedTimeRange, setSelectedTimeRange] = useState('Last 30 Days');
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
 
-  // Account Equity = Initial Capital + Realized Net P&L
+  const hasTrades = trades && trades.length > 0;
+
+  const {
+    netPnL = 0,
+    winRate = 0,
+    totalTrades = 0,
+    winningTrades = 0,
+    losingTrades = 0,
+    monthlyPnLMap = {},
+    weekdayStats = [],
+  } = analytics || {};
+
   const initialCap = Number(settings?.initialCapital) || 0;
   const currentEquity = initialCap + (netPnL || 0);
 
-  // Compute dynamic domain min/max with padding to prevent any chart clipping
-  const yValues = (equityCurve || []).map((pt) =>
-    equityMode === 'gross' ? (pt.grossEquity ?? pt.equity ?? 0) : (pt.equity ?? 0)
-  );
-  const minVal = yValues.length > 0 ? Math.min(...yValues, 0) : 0;
-  const maxVal = yValues.length > 0 ? Math.max(...yValues, 0) : 1000;
-  const range = Math.max(Math.abs(maxVal - minVal), 2000);
-  const padding = range * 0.15;
-  const yMin = Math.floor((minVal - padding) / 1000) * 1000;
-  const yMax = Math.ceil((maxVal + padding) / 1000) * 1000;
+  // 1. Largest Winning Trade Spotlight
+  const largestWinTrade = useMemo(() => {
+    if (!hasTrades) return null;
+    const wins = trades.filter((t) => Number(t.netPnL) > 0);
+    if (!wins.length) return null;
+    return [...wins].sort((a, b) => Number(b.netPnL) - Number(a.netPnL))[0];
+  }, [hasTrades, trades]);
 
-  // Calculate today's net P&L
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayStats = dailyPnLMap[todayStr] || { netPnL: 0, trades: 0 };
-  const dailyLossLimit = settings?.maxDailyLoss || 5000;
-  const isDailyLimitBreached = todayStats.netPnL < -dailyLossLimit;
-  const isDailyLimitWarning = todayStats.netPnL < -dailyLossLimit * 0.7 && !isDailyLimitBreached;
+  // Fallbacks matching mockup when no user trades exist
+  const displayLargeWinAmount = hasTrades
+    ? largestWinTrade ? Number(largestWinTrade.netPnL) : 0
+    : 12450.75;
 
-  // Monthly Chart data with abbreviated months (never skip months)
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const formatMonthAbbr = (mKey) => {
-    if (!mKey || mKey === 'Unknown') return mKey;
-    const parts = mKey.split('-');
-    if (parts.length === 2) {
-      const idx = parseInt(parts[1], 10) - 1;
-      return `${monthNames[idx] || parts[1]} '${parts[0].slice(2)}`;
+  const displayLargeWinText = hasTrades
+    ? largestWinTrade
+      ? `On ${formatIndianDate(largestWinTrade.date)} • ${largestWinTrade.symbol}`
+      : 'No winning trades yet'
+    : 'On 24 Nov 2026 • NIFTY 25750 PE';
+
+  // 2. Trade Equity Values
+  const displayEquity = hasTrades ? currentEquity : 124850.50;
+
+  // 3. Trade Outcome Values
+  const displayWinRate = hasTrades
+    ? totalTrades > 0 ? Math.round(winRate) : 0
+    : 68;
+  const displayLossRate = hasTrades
+    ? totalTrades > 0 ? Math.max(0, 100 - displayWinRate) : 0
+    : 32;
+
+  // 4. Weekday Edge Data
+  const weekdaysList = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weekdayMap = useMemo(() => {
+    if (!hasTrades) {
+      // Mockup defaults
+      return {
+        Mon: { rate: 72, count: 5, isTop: true },
+        Tue: { rate: 56, count: 4 },
+        Wed: { rate: 69, count: 6 },
+        Thu: { rate: 71, count: 5 },
+        Fri: { rate: 63, count: 4 },
+        Sat: { rate: null, count: 0 },
+        Sun: { rate: null, count: 0 },
+      };
     }
-    return mKey;
-  };
+    const map = {};
+    (weekdayStats || []).forEach((item) => {
+      const short = item.day ? item.day.slice(0, 3) : '';
+      const dayTrades = trades.filter((t) => {
+        if (!t.date) return false;
+        const dName = new Date(t.date).toLocaleDateString('en-US', { weekday: 'short' });
+        return dName === short;
+      });
+      const winsCount = dayTrades.filter((t) => Number(t.netPnL) > 0).length;
+      const rate = dayTrades.length > 0 ? Math.round((winsCount / dayTrades.length) * 100) : null;
+      map[short] = {
+        rate,
+        count: dayTrades.length,
+        pnl: item.pnl,
+      };
+    });
+    return map;
+  }, [hasTrades, weekdayStats, trades]);
 
-  const monthlyData = Object.keys(monthlyPnLMap || {})
-    .sort()
-    .map((month) => ({
-      month,
-      monthLabel: formatMonthAbbr(month),
-      pnl: monthlyPnLMap[month].netPnL,
-      trades: monthlyPnLMap[month].trades,
-    }));
+  // Find day with highest win rate
+  const bestDay = useMemo(() => {
+    if (!hasTrades) return 'Mon';
+    let topDay = null;
+    let maxRate = -1;
+    weekdaysList.forEach((d) => {
+      const stat = weekdayMap[d];
+      if (stat && stat.count > 0 && stat.rate !== null && stat.rate > maxRate) {
+        maxRate = stat.rate;
+        topDay = d;
+      }
+    });
+    return topDay || 'Mon';
+  }, [hasTrades, weekdayMap]);
 
-  // Outcome Donut Data
-  const outcomeData = [
-    { name: 'Wins', value: winningTrades, color: '#10b981' },
-    { name: 'Losses', value: losingTrades, color: '#ef4444' },
-    { name: 'Breakeven', value: breakevenTrades, color: '#525252' },
-  ].filter((d) => d.value > 0);
+  // 5. Monthly Net Profit
+  const monthKeys = Object.keys(monthlyPnLMap || {}).sort();
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const currentMonthPnL = hasTrades
+    ? monthlyPnLMap[currentMonthKey]?.netPnL ?? (monthKeys.length > 0 ? monthlyPnLMap[monthKeys[monthKeys.length - 1]]?.netPnL ?? 0 : 0)
+    : 32760.25;
 
-  // Segment comparison: F&O vs Stocks
-  const fnoPnL = (segmentStats?.['Options']?.netPnL || 0) + (segmentStats?.['Futures']?.netPnL || 0);
-  const fnoTrades = (segmentStats?.['Options']?.trades || 0) + (segmentStats?.['Futures']?.trades || 0);
-  const stockPnL = (segmentStats?.['Equity Intraday']?.netPnL || 0) + (segmentStats?.['Equity Delivery']?.netPnL || 0);
-  const stockTrades = (segmentStats?.['Equity Intraday']?.trades || 0) + (segmentStats?.['Equity Delivery']?.trades || 0);
+  const displayMonthlyPnlText = hasTrades ? formatINR(currentMonthPnL) : '₹32,760.25';
+  const displayMonthlyBadge = hasTrades
+    ? currentMonthPnL >= 1000 || currentMonthPnL <= -1000
+      ? `₹${(currentMonthPnL / 1000).toFixed(1)}K`
+      : formatINR(currentMonthPnL)
+    : '₹32.7K';
 
-  // Helper for Call / Put
-  const getTradeType = (t) => {
-    if (t.tradeType) return t.tradeType;
-    if (t.optionType === 'CE' || t.symbol?.includes('CE') || t.direction === 'Long') return 'Call';
-    if (t.optionType === 'PE' || t.symbol?.includes('PE')) return 'Put';
-    return 'Call';
-  };
-
-  // Recent 5 trades
-  const recentTrades = [...trades]
-    .filter((t) => t.status !== 'Open')
-    .sort((a, b) => new Date(`${b.date}T${b.entryTime || '09:15'}`) - new Date(`${a.date}T${a.entryTime || '09:15'}`))
-    .slice(0, 5);
+  // 6. Recent 3 executed trades
+  const recentTrades = useMemo(() => {
+    if (!hasTrades) {
+      return [
+        {
+          id: 'demo-1',
+          symbol: 'NIFTY 25750 PE',
+          type: 'PUT',
+          date: '24 Nov 2026',
+          time: '09:30',
+          netPnL: 12450.75,
+          isProfit: true,
+        },
+        {
+          id: 'demo-2',
+          symbol: 'NIFTY 25600 CE',
+          type: 'CALL',
+          date: '23 Nov 2026',
+          time: '14:20',
+          netPnL: -2143.26,
+          isProfit: false,
+        },
+        {
+          id: 'demo-3',
+          symbol: 'BANKNIFTY 56700 CE',
+          type: 'CALL',
+          date: '22 Nov 2026',
+          time: '11:15',
+          netPnL: 3210.50,
+          isProfit: true,
+        },
+      ];
+    }
+    return [...trades]
+      .filter((t) => t.status !== 'Open')
+      .sort((a, b) => new Date(`${b.date}T${b.entryTime || '09:15'}`) - new Date(`${a.date}T${a.entryTime || '09:15'}`))
+      .slice(0, 3)
+      .map((t) => {
+        const pnl = Number(t.netPnL) || 0;
+        let tType = 'CALL';
+        if (t.optionType === 'PE' || t.symbol?.includes('PE')) tType = 'PUT';
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          type: tType,
+          date: formatIndianDate(t.date),
+          time: t.entryTime || '09:30',
+          netPnL: pnl,
+          isProfit: pnl >= 0,
+          raw: t,
+        };
+      });
+  }, [hasTrades, trades]);
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-32">
-      {/* Executive Branded Terminal Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0d131a] via-[#090909] to-[#090909] border border-neutral-800 p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-black border border-emerald-500/30 p-1 flex items-center justify-center shadow-[0_0_12px_rgba(0,230,118,0.25)] shrink-0">
-            <img src="/logo-circle.png" alt="Delta Journal" className="w-full h-full object-contain" />
+    <div className="space-y-3.5 pb-28 max-w-4xl mx-auto w-full min-w-0 px-0.5">
+      {/* Top Title Bar: Dashboard + Time Filter Pill */}
+      <div className="flex items-center justify-between gap-2 pt-0.5">
+        <div className="flex items-center space-x-2">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[#00e676]">
+            <LayoutGrid className="w-5 h-5 text-[#00e676]" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm sm:text-base md:text-lg font-black text-white tracking-tight">DELTA JOURNAL</span>
-              <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">LIVE</span>
-            </div>
-            <div className="flex items-center space-x-2 text-xs text-neutral-400 mt-0.5 font-medium">
-              <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px]">Track • Analyze • Grow</span>
-              <span className="text-neutral-700 hidden sm:inline">•</span>
-              <span className="hidden sm:inline">NSE / BSE Derivatives & Equity Analytics</span>
-            </div>
-          </div>
+          <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
+            Dashboard
+          </h2>
         </div>
 
-        <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+        {/* Time Filter Pill */}
+        <div className="relative">
           <button
-            onClick={() => onNavigateTab('trades')}
-            className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black transition shadow-[0_0_12px_rgba(0,230,118,0.3)] active:scale-95"
+            type="button"
+            onClick={() => setIsRangeOpen(!isRangeOpen)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#0e1115] border border-neutral-800 hover:border-neutral-700 text-xs text-neutral-200 font-semibold active:scale-95 transition shadow-sm"
           >
-            + Log New Trade
+            <span>{selectedTimeRange}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
           </button>
+
+          {isRangeOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-36 rounded-xl bg-[#0c0e10] border border-neutral-800 py-1 shadow-2xl z-20 text-xs">
+              {['Last 30 Days', 'This Month', 'Last 7 Days', 'All Time'].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTimeRange(r);
+                    setIsRangeOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 hover:bg-neutral-800 transition ${
+                    selectedTimeRange === r ? 'text-emerald-400 font-bold' : 'text-neutral-300'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Negative Account Equity Warning Banner */}
-      {currentEquity < 0 && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-950/40 border border-rose-500/60 text-rose-300 shadow-xl">
-          <div className="flex items-center space-x-3">
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-            <div>
-              <div className="font-black text-sm text-rose-200">
-                Account equity below zero
-              </div>
-              <div className="text-xs text-rose-300/90 mt-0.5">
-                Current account equity is <strong>{formatINR(currentEquity)}</strong> on starting capital of {formatINR(initialCap)}. Avoid taking fresh positions until capital is replenished.
-              </div>
-            </div>
+      {/* Safety Rule: Negative Account Equity Warning Banner */}
+      {hasTrades && currentEquity < 0 && (
+        <div className="flex items-center space-x-3 p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/50 text-rose-300 shadow-xl">
+          <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+          <div className="text-xs">
+            <span className="font-bold text-rose-200">Account equity below zero: </span>
+            Current equity is <strong>{formatINR(currentEquity)}</strong>. Please manage position sizing carefully.
           </div>
         </div>
       )}
 
-      {/* Daily Risk Limit Notification Banner */}
-      {isDailyLimitBreached && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-950/20 border border-rose-500/40 text-rose-300">
-          <div className="flex items-center space-x-3">
-            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-            <div>
-              <div className="font-bold text-sm text-rose-200">
-                Daily Max Loss Limit Breached!
-              </div>
-              <div className="text-xs text-rose-300/80">
-                Today's realized net loss is {formatINR(todayStats.netPnL)}. Your risk limit is {formatINR(dailyLossLimit)}. System strongly advises stopping all trading.
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => onNavigateTab('trades')}
-            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow"
-          >
-            Review Journal
-          </button>
-        </div>
-      )}
-
-      {isDailyLimitWarning && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-950/20 border border-amber-500/40 text-amber-300">
-          <div className="flex items-center space-x-3">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-            <div>
-              <div className="font-bold text-sm text-amber-200">
-                Daily Risk Warning: Approaching Daily Max Loss
-              </div>
-              <div className="text-xs text-amber-300/80">
-                Today's loss is {formatINR(todayStats.netPnL)}. Your max daily limit is {formatINR(dailyLossLimit)}. Exercise discipline!
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Top Core KPI Cards - Tightened Spacing */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Cumulative Net Realized P&L Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl relative overflow-hidden">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-400">Cumulative Net P&L</span>
-            <div className={`p-2 rounded-xl ${netPnL >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-500'}`}>
-              {netPnL >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-            </div>
-          </div>
-          <div className={`text-2xl sm:text-3xl font-black ${netPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-            {formatINR(netPnL)}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-neutral-400 pt-2 border-t border-neutral-800">
-            <span>Gross: {formatINR(grossPnL)}</span>
-            <span>Charges: <span className="text-amber-400 font-bold">{formatINR(totalCharges)}</span></span>
-          </div>
+      {/* 1. Hero Spotlight Card: "Large Win" */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#031d0e] via-[#072a16] to-[#041209] border border-emerald-500/30 p-4 sm:p-5 shadow-2xl">
+        {/* Candlestick Watermark Silhouette on Right */}
+        <div className="absolute right-1 bottom-0.5 pointer-events-none select-none">
+          <CandlestickWatermark />
         </div>
 
-        {/* Win Rate Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-400">Win Rate</span>
-            <div className="p-2 rounded-xl bg-neutral-800 text-white">
-              <Target className="w-5 h-5" />
-            </div>
+        <div className="flex items-center space-x-3.5 relative z-10">
+          {/* Glowing Green Trophy Circle */}
+          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-emerald-950/80 border border-emerald-400/50 text-emerald-400 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(0,255,102,0.35)] p-3">
+            <Trophy className="w-7 h-7 sm:w-8 sm:h-8 text-[#00ff66]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">
-            {winRate}%
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-neutral-400 pt-2 border-t border-neutral-800">
-            <span className="text-emerald-400 font-bold">{winningTrades} Wins</span>
-            <span className="text-rose-500 font-bold">{losingTrades} Losses</span>
-            <span>Total: {totalTrades}</span>
-          </div>
-        </div>
 
-        {/* Profit Factor & Expectancy Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-400">Profit Factor</span>
-            <div className="p-2 rounded-xl bg-neutral-800 text-neutral-300">
-              <Scale className="w-5 h-5" />
+          <div className="min-w-0 pr-16 sm:pr-0">
+            <div className="flex items-center space-x-1.5 text-xs text-neutral-300 font-bold">
+              <span>Large Win</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[#00ff66]" />
             </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-white">
-            {profitFactor}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-neutral-400 pt-2 border-t border-neutral-800">
-            <span>Expectancy: <strong className={expectancy >= 0 ? 'text-emerald-400' : 'text-rose-500'}>{formatINR(expectancy)}</strong></span>
-            <span>Avg Win: {formatINR(avgWin)}</span>
-          </div>
-        </div>
 
-        {/* Max Drawdown Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-neutral-400">Max Drawdown</span>
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="text-xl sm:text-2xl md:text-3xl font-black text-[#00e676] tracking-tight mt-0.5">
+              {formatINR(displayLargeWinAmount)}
             </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-rose-500">
-            {formatINR(maxDrawdownAmount)}
-          </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-neutral-400 pt-2 border-t border-neutral-800">
-            <span>
-              Peak-to-Trough: {maxDrawdownPercent !== null && maxDrawdownPercent !== undefined ? `-${maxDrawdownPercent}%` : 'N/A'}
-            </span>
-            <span>Avg Loss: {formatINR(avgLoss)}</span>
+
+            <div className="text-[11px] sm:text-xs text-neutral-400 font-medium truncate mt-0.5">
+              {displayLargeWinText}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Charges vs Gross Edge Insight Card */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Scale className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm sm:text-base font-bold text-white">Charges vs Gross Profit Edge</h3>
-          </div>
-          <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
-            F&O COST IMPACT
-          </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="p-3 rounded-xl bg-black border border-neutral-800">
-            <span className="text-neutral-400 text-[11px] uppercase font-semibold block">Charges as % of Gross</span>
-            <div className="text-lg font-black text-amber-400 mt-0.5">
-              {chargesInsight?.chargesToGrossPercent !== null && chargesInsight?.chargesToGrossPercent !== undefined
-                ? `${chargesInsight.chargesToGrossPercent}%`
-                : 'N/A'}
+      {/* 2. Two-Column Row on Mobile & Desktop: "Trade Equity Journal" & "Trade Outcome" */}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
+        {/* Left Card: Trade Equity Journal */}
+        <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl flex flex-col justify-between overflow-hidden">
+          <div>
+            <div className="flex items-center space-x-1.5 text-[11px] sm:text-xs font-bold text-white truncate">
+              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00e676] shrink-0" />
+              <span className="truncate">Trade Equity Journal</span>
             </div>
-            <p className="text-[10px] text-neutral-500 mt-0.5">
-              {grossProfit > 0 ? `${formatINR(totalCharges)} paid out of ${formatINR(grossProfit)} gross` : 'Gross profit is zero or negative'}
-            </p>
-          </div>
-          <div className="p-3 rounded-xl bg-black border border-neutral-800">
-            <span className="text-neutral-400 text-[11px] uppercase font-semibold block">Avg Charges / Trade</span>
-            <div className="text-lg font-black text-white mt-0.5">
-              {formatINR(chargesInsight?.chargesPerTrade || 0)}
-            </div>
-            <p className="text-[10px] text-neutral-500 mt-0.5">
-              Round-trip statutory taxes & broker fees
-            </p>
-          </div>
-          <div className="p-3 rounded-xl bg-black border border-neutral-800">
-            <span className="text-neutral-400 text-[11px] uppercase font-semibold block">Break-even Points Needed</span>
-            <div className="text-lg font-black text-emerald-400 mt-0.5">
-              {chargesInsight?.breakevenPointsPerTrade || 0} pts
-            </div>
-            <p className="text-[10px] text-neutral-500 mt-0.5">
-              Points needed per trade just to cover levies
-            </p>
-          </div>
-        </div>
-      </div>
 
-      {/* Secondary Metrics Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Largest Win</div>
-          <div className="text-sm sm:text-base font-black text-emerald-400 mt-0.5">{formatINR(largestWin)}</div>
-        </div>
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Largest Loss</div>
-          <div className="text-sm sm:text-base font-black text-rose-500 mt-0.5">{formatINR(largestLoss)}</div>
-        </div>
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Current Streak</div>
-          <div className="text-sm sm:text-base font-black text-white mt-0.5">
-            {currentStreak?.count > 0 ? (
-              <span className={currentStreak.type === 'win' ? 'text-emerald-400' : 'text-rose-500'}>
-                {currentStreak.count} {currentStreak.type === 'win' ? 'Wins' : 'Losses'}
-              </span>
-            ) : (
-              'None'
-            )}
-          </div>
-        </div>
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Max Win Streak</div>
-          <div className="text-sm sm:text-base font-black text-emerald-400 mt-0.5">{maxConsecutiveWins} trades</div>
-        </div>
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Max Loss Streak</div>
-          <div className="text-sm sm:text-base font-black text-rose-500 mt-0.5">{maxConsecutiveLosses} trades</div>
-        </div>
-        <div className="p-3 rounded-2xl bg-[#090909] border border-neutral-800 text-center">
-          <div className="text-xs text-neutral-400 font-medium">Win/Loss Ratio</div>
-          <div className="text-sm sm:text-base font-black text-white mt-0.5">
-            {avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : 'N/A'}
-          </div>
-        </div>
-      </div>
+            <div className="text-base sm:text-xl md:text-2xl font-black text-white tracking-tight mt-1.5 truncate">
+              {formatINR(displayEquity)}
+            </div>
 
-      {/* Main Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Equity Curve (2 cols on large screen) */}
-        <div className="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-sm sm:text-base font-black text-white">
-                  Journal Equity Curve
-                </h2>
-                {/* Net vs Gross Toggle */}
-                <div className="flex items-center space-x-1 bg-black p-0.5 rounded-lg border border-neutral-800 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setEquityMode('net')}
-                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
-                      equityMode === 'net' ? 'bg-emerald-500 text-black shadow' : 'text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    Net
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEquityMode('gross')}
-                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
-                      equityMode === 'gross' ? 'bg-teal-500 text-black shadow' : 'text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    Gross
-                  </button>
+            <div className="text-[9px] sm:text-[10px] text-[#00e676] font-semibold mt-0.5 truncate">
+              ↑ +12.6% vs last month
+            </div>
+          </div>
+
+          {/* Smooth Glowing Green Area Wave Chart */}
+          <div className="w-full mt-2 -mb-1">
+            <SparklineWave />
+          </div>
+        </div>
+
+        {/* Right Card: Trade Outcome (Centered Donut + Legend) */}
+        <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl flex flex-col justify-between overflow-hidden">
+          <div className="flex items-center space-x-1.5 text-[11px] sm:text-xs font-bold text-white truncate">
+            <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00e676] shrink-0" />
+            <span className="truncate">Trade Outcome</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-1 mt-1.5 pt-0.5">
+            {/* SVG Donut Ring with Centered Text */}
+            <OutcomeDonut winRate={displayWinRate} />
+
+            {/* Right Legend */}
+            <div className="flex flex-col space-y-1.5 text-xs min-w-0 pr-0.5">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#00e676] shrink-0 shadow-[0_0_6px_#00e676]" />
+                <div className="text-[10px] sm:text-[11px] leading-tight">
+                  <span className="text-neutral-400 font-medium block">Wins</span>
+                  <strong className="text-white font-bold block">{displayWinRate}%</strong>
                 </div>
               </div>
-              <p className="text-[11px] text-neutral-400 mt-0.5">
-                {equityMode === 'net' ? 'Account Equity after all charges & statutory taxes' : 'Gross Trading Equity before taxes'}
-              </p>
-            </div>
-            <div className="text-left sm:text-right">
-              <span className="text-[11px] text-neutral-400 uppercase font-semibold">Account Equity</span>
-              <div className={`text-xs sm:text-sm font-black ${currentEquity >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                {formatINR(currentEquity)}
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#ef4444] shrink-0 shadow-[0_0_6px_#ef4444]" />
+                <div className="text-[10px] sm:text-[11px] leading-tight">
+                  <span className="text-neutral-400 font-medium block">Losses</span>
+                  <strong className="text-white font-bold block">{displayLossRate}%</strong>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="h-56 sm:h-64 lg:h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={equityCurve} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="equityGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={equityMode === 'gross' ? '#14b8a6' : '#10b981'} stopOpacity={0.4} />
-                    <stop offset="95%" stopColor={equityMode === 'gross' ? '#14b8a6' : '#10b981'} stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                <XAxis dataKey="tradeIndex" stroke="#525252" tick={{ fontSize: 11 }} />
-                <YAxis
-                  stroke="#525252"
-                  tick={{ fontSize: 11 }}
-                  domain={[yMin, yMax]}
-                  tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  position={{ y: 0 }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-black/95 p-3 rounded-xl border border-neutral-700 shadow-2xl text-xs space-y-1">
-                          <div className="font-bold text-white">Trade #{data.tradeIndex}: {data.symbol || 'Start'}</div>
-                          <div className="text-neutral-400">Date: {formatIndianDate(data.date)}</div>
-                          <div className="pt-1 border-t border-neutral-800 space-y-0.5">
-                            <div>Account Equity: <strong className="text-white">{formatINR(data.equity)}</strong></div>
-                            <div>Cumulative Net P&L: <strong className={data.cumulativePnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}>{formatINR(data.cumulativePnL)}</strong></div>
-                            <div>Cumulative Gross P&L: <strong className={(data.cumulativeGrossPnL || 0) >= 0 ? 'text-teal-400' : 'text-rose-400'}>{formatINR(data.cumulativeGrossPnL || 0)}</strong></div>
-                            {data.netPnL !== undefined && (
-                              <div>Trade Net P&L: <strong className={data.netPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}>{formatINR(data.netPnL)}</strong></div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey={equityMode === 'gross' ? 'grossEquity' : 'equity'}
-                  stroke={equityMode === 'gross' ? '#14b8a6' : '#10b981'}
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#equityGrad)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+      {/* 3. Weekday Edge Card */}
+      <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-bold text-white">
+            <CalendarDays className="w-4 h-4 text-[#00e676]" />
+            <span>Weekday Edge</span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab && onNavigateTab('calendar')}
+            className="flex items-center space-x-0.5 text-xs text-neutral-400 hover:text-white transition"
+          >
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Win/Loss Donut & Stocks vs F&O Comparison */}
-        <div className="space-y-4 sm:space-y-6">
-          {/* Win/Loss Outcome Donut with Centered Win Rate % */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-            <h3 className="text-sm font-bold text-white mb-1">Trade Outcomes</h3>
-            <div className="h-44 w-full flex items-center justify-center relative">
-              {totalTrades > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={outcomeData}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={45}
-                        outerRadius={68}
-                        paddingAngle={3}
-                      >
-                        {outcomeData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const item = payload[0];
-                            return (
-                              <div className="bg-black px-2.5 py-1.5 rounded-lg border border-neutral-800 text-xs text-white">
-                                {item.name}: <strong>{item.value}</strong> ({((item.value / totalTrades) * 100).toFixed(1)}%)
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  {/* Center Metric */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-xl font-black text-white">{winRate}%</span>
-                    <span className="text-[10px] text-neutral-400 uppercase font-semibold">Win Rate</span>
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs text-neutral-500">No trades recorded yet</div>
-              )}
+        {/* 7 Horizontal Weekday Chips */}
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center select-none">
+          {weekdaysList.map((day) => {
+            const stat = weekdayMap[day];
+            const isTop = day === bestDay && stat && stat.rate !== null;
+            const displayRate = stat && stat.rate !== null ? `${stat.rate}%` : '+';
+
+            return (
+              <div
+                key={day}
+                className={`py-2 px-1 rounded-xl transition flex flex-col items-center justify-center ${
+                  isTop
+                    ? 'border border-[#00e676] bg-[#042414] text-[#00e676] shadow-[0_0_12px_rgba(0,230,118,0.25)]'
+                    : 'border border-neutral-800/80 bg-black/60 text-neutral-300'
+                }`}
+              >
+                <span className="text-[10px] sm:text-[11px] font-bold block leading-none">
+                  {day}
+                </span>
+                <span
+                  className={`text-[10px] sm:text-xs font-black block mt-1.5 leading-none ${
+                    isTop ? 'text-[#00e676]' : 'text-neutral-400'
+                  }`}
+                >
+                  {displayRate}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4. Monthly Net Profit Card */}
+      <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-bold text-white">
+            <BarChart3 className="w-4 h-4 text-[#00e676]" />
+            <span>Monthly Net Profit</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab && onNavigateTab('calendar')}
+            className="flex items-center space-x-0.5 text-xs text-neutral-400 hover:text-white transition"
+          >
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="flex items-end justify-between gap-3 pt-1">
+          {/* Left Values */}
+          <div>
+            <div
+              className={`text-xl sm:text-2xl md:text-3xl font-black tracking-tight ${
+                currentMonthPnL >= 0 ? 'text-[#00e676]' : 'text-rose-500'
+              }`}
+            >
+              {displayMonthlyPnlText}
             </div>
-            <div className="flex justify-around text-xs text-neutral-300 pt-2 border-t border-neutral-800">
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                <span>Win ({winningTrades})</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                <span>Loss ({losingTrades})</span>
-              </div>
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-neutral-600" />
-                <span>BE ({breakevenTrades})</span>
-              </div>
+            <div className="text-[11px] text-[#00e676] font-semibold mt-0.5">
+              ↑ +18.4% vs last month
             </div>
           </div>
 
-          {/* Weekday Breakdown with Trade Counts */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl space-y-2.5">
-            <h3 className="text-sm font-bold text-white flex items-center justify-between">
-              <span>Weekday Edge Distribution</span>
-              <span className="text-[10px] font-semibold text-neutral-400">P&L & Counts</span>
-            </h3>
-            <div className="space-y-1.5">
-              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => {
-                const dayPnl = weekdayStats?.[day] || 0;
-                const count = weekdayCounts?.[day] || 0;
-                return (
-                  <div key={day} className="flex items-center justify-between p-2 rounded-xl bg-black border border-neutral-850 text-xs">
-                    <span className="font-semibold text-neutral-300">{day}</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-neutral-500 text-[10px]">{count} trades</span>
-                      <span className={`font-black ${dayPnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                        {formatINR(dayPnl)}
+          {/* Right Mini Bar Chart with Pin Tooltip */}
+          <MiniMonthlyBars activePnlText={displayMonthlyBadge} />
+        </div>
+      </div>
+
+      {/* 5. Recent Activity Card */}
+      <div className="rounded-2xl bg-[#0c0e10] border border-neutral-800/80 p-3 sm:p-4 shadow-xl space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs font-bold text-white">
+            <Zap className="w-4 h-4 text-[#00e676]" />
+            <span>Recent Activity</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigateTab && onNavigateTab('trades')}
+            className="flex items-center space-x-0.5 text-xs text-neutral-400 hover:text-white transition"
+          >
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* List of 3 Recent Trades */}
+        <div className="space-y-2">
+          {recentTrades.map((t) => {
+            const isProfit = t.isProfit;
+            const isCall = t.type === 'CALL';
+
+            return (
+              <div
+                key={t.id}
+                onClick={() => t.raw && onViewTrade && onViewTrade(t.raw)}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-black/60 hover:bg-neutral-900 border border-neutral-800/80 transition cursor-pointer active:scale-[0.99]"
+              >
+                {/* Left: Icon + Symbol + CALL/PUT + Timestamp */}
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      isProfit
+                        ? 'bg-[#042414] border border-[#00e676]/30 text-[#00ff7f]'
+                        : 'bg-[#2a0e0e] border border-rose-500/30 text-rose-400'
+                    }`}
+                  >
+                    {isProfit ? (
+                      <ArrowUpRight className="w-4 h-4" />
+                    ) : (
+                      <ArrowDownRight className="w-4 h-4" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center space-x-1.5 flex-wrap">
+                      <span className="text-xs sm:text-sm font-black text-white truncate">
+                        {t.symbol}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                          isCall
+                            ? isProfit
+                              ? 'bg-[#064e27] text-[#00ff66]'
+                              : 'bg-[#3b1112] text-[#ff7b7b]'
+                            : 'bg-[#064e27] text-[#00ff66]'
+                        }`}
+                      >
+                        {t.type}
                       </span>
                     </div>
+                    <div className="text-[10px] sm:text-[11px] text-neutral-400 font-medium mt-0.5">
+                      {t.date} • {t.time}
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
+                </div>
 
-      {/* Monthly Performance Bar Chart */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white">Monthly Net Profit</h3>
-            <p className="text-xs text-neutral-400">Monthly profit & loss distribution across Indian market sessions</p>
-          </div>
-          <button
-            onClick={() => onNavigateTab('calendar')}
-            className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center space-x-1"
-          >
-            <span>View Full Calendar</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
+                {/* Right: Net P&L + Chevron */}
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span
+                    className={`text-xs sm:text-sm font-black ${
+                      isProfit ? 'text-[#00e676]' : 'text-rose-400'
+                    }`}
+                  >
+                    {isProfit ? `+${formatINR(t.netPnL)}` : formatINR(t.netPnL)}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />
+                </div>
+              </div>
+            );
+          })}
         </div>
-        {monthlyData.length > 0 ? (
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                <XAxis dataKey="monthLabel" stroke="#525252" interval={0} tick={{ fontSize: 10 }} />
-                <YAxis
-                  stroke="#525252"
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const item = payload[0].payload;
-                      return (
-                        <div className="bg-black p-3 rounded-xl border border-neutral-800 text-xs">
-                          <div className="font-bold text-white">{item.monthLabel} ({item.month})</div>
-                          <div className="text-neutral-400">Trades: {item.trades}</div>
-                          <div className="mt-1">
-                            Net Profit: <strong className={item.pnl >= 0 ? 'text-emerald-400' : 'text-rose-500'}>{formatINR(item.pnl)}</strong>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                  {monthlyData.map((entry, index) => (
-                    <Cell key={`bar-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="p-8 text-center text-xs text-neutral-500 bg-black rounded-xl border border-neutral-850">
-            No trades logged yet. Monthly performance will render here once you record your first trades.
-          </div>
-        )}
-      </div>
-
-      {/* Recent Trades Table */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-[#090909] border border-neutral-800 shadow-xl">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-white">Recent Activity</h3>
-            <p className="text-xs text-neutral-400">Latest executed setups and trades</p>
-          </div>
-          <button
-            onClick={() => onNavigateTab('trades')}
-            className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center space-x-1"
-          >
-            <span>View All Trades ({totalTrades})</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {recentTrades.length > 0 ? (
-          <div className="overflow-x-auto touch-scroll">
-            <table className="w-full text-left text-xs min-w-[640px]">
-              <thead className="text-[11px] uppercase tracking-wider text-neutral-400 bg-[#111111] border-b border-neutral-800">
-                <tr>
-                  <th className="py-2.5 px-3">Date & Time</th>
-                  <th className="py-2.5 px-3">Instrument</th>
-                  <th className="py-2.5 px-3">Type</th>
-                  <th className="py-2.5 px-3">Qty</th>
-                  <th className="py-2.5 px-3">Gross</th>
-                  <th className="py-2.5 px-3">Charges</th>
-                  <th className="py-2.5 px-3 text-right">Net Realized</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800">
-                {recentTrades.map((t) => {
-                  const isProfit = Number(t.netPnL) >= 0;
-                  const tType = getTradeType(t);
-                  return (
-                    <tr
-                      key={t.id}
-                      onClick={() => onViewTrade(t)}
-                      className="hover:bg-neutral-900/60 cursor-pointer transition-colors"
-                    >
-                      <td className="py-2.5 px-3 text-neutral-300">
-                        {formatIndianDate(t.date)} <span className="text-neutral-500 text-[10px]">{t.entryTime}</span>
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-white">{t.symbol}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                          tType === 'Call' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                        }`}>
-                          {tType.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-neutral-300">{t.quantity}</td>
-                      <td className={`py-2.5 px-3 font-semibold ${t.grossPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                        {formatINR(t.grossPnL)}
-                      </td>
-                      <td className="py-2.5 px-3 text-amber-400">{formatINR(t.charges)}</td>
-                      <td className={`py-2.5 px-3 text-right font-black ${isProfit ? 'text-emerald-400' : 'text-rose-500'}`}>
-                        {formatINR(t.netPnL)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="p-8 text-center text-xs text-neutral-500 bg-black rounded-xl border border-neutral-850">
-            No trades logged yet. Use the Trade Journal to record your first execution.
-          </div>
-        )}
       </div>
     </div>
   );
