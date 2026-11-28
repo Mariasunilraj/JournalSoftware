@@ -179,7 +179,7 @@ export default function SyncModal({
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 Active Account
               </span>
-              <span className="font-mono text-white font-medium">{currentUser?.username || 'mariasunilraj8gmail.com'}</span>
+              <span className="font-mono text-white font-medium">{currentUser?.username || currentUser?.email || 'Active User'}</span>
             </div>
             <div className="flex items-center justify-between text-neutral-400">
               <span className="flex items-center gap-1.5">

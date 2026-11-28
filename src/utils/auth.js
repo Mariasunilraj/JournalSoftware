@@ -3,16 +3,6 @@
 const USERS_KEY = 'delta_users_db_v1';
 const SESSION_KEY = 'delta_active_session_v1';
 
-// Primary Default Account specified by user
-export const PRIMARY_USER = {
-  id: 'usr_sunil_08',
-  username: 'mariasunilraj8gmail.com',
-  email: 'mariasunilraj8gmail.com',
-  name: 'Maria Sunil Raj',
-  password: 'Sunil@08',
-  createdAt: '2026-10-24T00:00:00.000Z',
-};
-
 /**
  * Deterministic hash for secure client-side credential verification
  */
@@ -66,29 +56,10 @@ export async function syncUsersWithServer() {
 }
 
 /**
- * Initialize user store & ensure Sunil's primary account is seeded
+ * Initialize user store & sync with server if available
  */
 export function initAuth() {
   try {
-    let users = getUsers();
-    const hasPrimary = users.some(
-      (u) =>
-        u.username.toLowerCase() === PRIMARY_USER.username.toLowerCase() ||
-        u.email.toLowerCase() === PRIMARY_USER.email.toLowerCase()
-    );
-
-    if (!hasPrimary) {
-      const primaryAccount = {
-        id: PRIMARY_USER.id,
-        username: PRIMARY_USER.username,
-        email: PRIMARY_USER.email,
-        name: PRIMARY_USER.name,
-        passwordHash: hashPassword(PRIMARY_USER.password),
-        createdAt: PRIMARY_USER.createdAt,
-      };
-      users = [primaryAccount, ...users];
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    }
     // Background sync users with server
     syncUsersWithServer();
   } catch (err) {
@@ -134,13 +105,10 @@ export function login(identifier, password) {
   }
 
   const users = getUsers();
-  // Support both mariasunilraj8gmail.com and mariasunilraj8@gmail.com
   const user = users.find(
     (u) =>
-      u.username.toLowerCase() === cleanId ||
-      u.email.toLowerCase() === cleanId ||
-      (cleanId === 'mariasunilraj8@gmail.com' && u.username === 'mariasunilraj8gmail.com') ||
-      (cleanId === 'mariasunilraj8gmail.com' && u.email === 'mariasunilraj8gmail.com')
+      (u.username && u.username.toLowerCase() === cleanId) ||
+      (u.email && u.email.toLowerCase() === cleanId)
   );
 
   if (!user) {
@@ -161,7 +129,6 @@ export function login(identifier, password) {
     username: user.username,
     email: user.email,
     name: user.name,
-    isPrimary: user.id === PRIMARY_USER.id,
     token: `delta_sec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
     loginTime: new Date().toISOString(),
   };

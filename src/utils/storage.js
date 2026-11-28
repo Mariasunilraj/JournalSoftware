@@ -1,6 +1,6 @@
 import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from './sampleData';
 import { DEFAULT_RISK_SETTINGS } from './constants';
-import { getActiveSession, PRIMARY_USER } from './auth';
+import { getActiveSession } from './auth';
 
 // Legacy keys
 const LEGACY_TRADES_KEY = 'fno_journal_trades_v1';
@@ -146,10 +146,14 @@ export function loadUserData(userId) {
 export function loadInitialData() {
   const session = getActiveSession();
   if (session && session.id) {
-    return loadUserData(session.id, session.isPrimary);
+    return loadUserData(session.id);
   }
-  // Default to Sunil's account if no session explicitly set
-  return loadUserData(PRIMARY_USER.id, true);
+  return {
+    trades: [],
+    diary: [],
+    capitalLogs: [],
+    settings: DEFAULT_RISK_SETTINGS,
+  };
 }
 
 /**
@@ -202,25 +206,25 @@ export function saveUserSettings(userId, settings) {
 // Global fallback proxies (routes to currently active user session)
 export function saveTrades(trades) {
   const session = getActiveSession();
-  const uid = session ? session.id : PRIMARY_USER.id;
+  const uid = session ? session.id : 'guest';
   saveUserTrades(uid, trades);
 }
 
 export function saveDiary(diary) {
   const session = getActiveSession();
-  const uid = session ? session.id : PRIMARY_USER.id;
+  const uid = session ? session.id : 'guest';
   saveUserDiary(uid, diary);
 }
 
 export function saveCapitalLogs(logs) {
   const session = getActiveSession();
-  const uid = session ? session.id : PRIMARY_USER.id;
+  const uid = session ? session.id : 'guest';
   saveUserCapitalLogs(uid, logs);
 }
 
 export function saveSettings(settings) {
   const session = getActiveSession();
-  const uid = session ? session.id : PRIMARY_USER.id;
+  const uid = session ? session.id : 'guest';
   saveUserSettings(uid, settings);
 }
 

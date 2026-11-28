@@ -39,24 +39,11 @@ import {
   addDeletedTradeId,
 } from './utils/storage';
 import { calculateAnalytics } from './utils/analytics';
-import { getActiveSession, logout as authLogout, initAuth, PRIMARY_USER } from './utils/auth';
+import { getActiveSession, logout as authLogout, initAuth } from './utils/auth';
 
 export default function App() {
-  // Ensure default Sunil account is initialized in user database & all demo data wiped clean
   useEffect(() => {
     initAuth();
-    const wipedFlag = 'delta_sunil_wiped_clean_v3';
-    if (!localStorage.getItem(wipedFlag)) {
-      wipeUserAccountData(PRIMARY_USER.id);
-      localStorage.setItem(wipedFlag, 'true');
-      const session = getActiveSession();
-      if (session && session.id === PRIMARY_USER.id) {
-        setTrades([]);
-        setDiary([]);
-        setCapitalLogs([]);
-        setSettings({ initialCapital: 0, maxDailyLoss: 5000, maxDailyTrades: 5, defaultBrokeragePerOrder: 20 });
-      }
-    }
   }, []);
 
   // Authentication State
