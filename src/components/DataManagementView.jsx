@@ -23,7 +23,7 @@ import {
   parseTradesCSV,
 } from '../utils/storage';
 import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from '../utils/sampleData';
-import { DEFAULT_RISK_SETTINGS, DEFAULT_EXCHANGE_RATES, DEFAULT_INDEX_EXPIRY_DAYS } from '../utils/constants';
+import { DEFAULT_RISK_SETTINGS, DEFAULT_EXCHANGE_RATES, DEFAULT_INDEX_EXPIRY_DAYS, DEFAULT_LOT_SIZES } from '../utils/constants';
 import { formatIndianDate } from '../utils/calculations';
 import { calculateIndianCharges } from '../utils/chargesCalculator';
 
@@ -62,6 +62,14 @@ export default function DataManagementView({
   // Expiry days editing state
   const [expiryDaysForm, setExpiryDaysForm] = useState(() => {
     return settings?.expiryDays || DEFAULT_INDEX_EXPIRY_DAYS;
+  });
+
+  // Lot sizes editing state
+  const [lotSizesForm, setLotSizesForm] = useState(() => {
+    return {
+      ...DEFAULT_LOT_SIZES,
+      ...(settings?.lotSizes || {}),
+    };
   });
 
   const notify = (msg) => {
@@ -227,6 +235,7 @@ export default function DataManagementView({
       ...(settings || DEFAULT_RISK_SETTINGS),
       exchangeRates: updatedRates,
       expiryDays: expiryDaysForm,
+      lotSizes: lotSizesForm,
     };
     onUpdateAllData({
       trades,
@@ -234,7 +243,7 @@ export default function DataManagementView({
       capitalLogs,
       settings: updatedSettings,
     });
-    notify('Exchange tax rates and expiry schedules saved successfully!');
+    notify('Exchange tax rates, lot sizes, and expiry schedules saved successfully!');
   };
 
   // 4. Request Wipe All Records (opens typed DELETE modal)
@@ -594,12 +603,57 @@ export default function DataManagementView({
                 </div>
               </div>
 
+              {/* Derivative Market Lot Sizes (Indices & Stocks) */}
+              <div className="pt-3 border-t border-white/[0.08] space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                      <Layers className="w-3.5 h-3.5 text-[#00e676]" />
+                      <span>F&O Market Lot Sizes (NSE / BSE Presets)</span>
+                    </h4>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      Updated per official SEBI & exchange circulars (NIFTY 65, BANKNIFTY 30, FINNIFTY 60, SENSEX 20, MIDCPNIFTY 120, BANKEX 30).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLotSizesForm({ ...DEFAULT_LOT_SIZES })}
+                    className="text-[11px] font-bold text-[#00e676] hover:underline"
+                  >
+                    Reset to Official Defaults
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+                  {Object.entries(lotSizesForm).map(([sym, lot]) => (
+                    <div key={sym} className="p-2.5 rounded-xl bg-black/50 border border-white/[0.08]">
+                      <label className="text-neutral-400 text-[10px] uppercase font-bold block mb-1">
+                        {sym}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={lot}
+                        onChange={(e) =>
+                          setLotSizesForm({
+                            ...lotSizesForm,
+                            [sym]: parseInt(e.target.value, 10) || 1,
+                          })
+                        }
+                        className="w-full bg-[#08090b] border border-white/[0.12] focus:border-[#00e676] rounded-lg px-2.5 py-1.5 text-white font-bold text-xs focus:outline-none focus:ring-1 focus:ring-[#00e676]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <button
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white text-xs font-bold border border-white/[0.12] hover:border-white/[0.2] transition min-h-[44px]"
                 >
-                  Save Custom Rates & Expiry
+                  Save Custom Rates, Lots & Expiry
                 </button>
 
                 <button

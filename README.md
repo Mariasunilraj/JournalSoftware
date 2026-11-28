@@ -15,7 +15,7 @@ A personal trading records and analytics software built specifically for Indian 
 - **Daily Loss Limiter Alerts**: Real-time visual warning banners when approaching or exceeding your configured daily max loss budget.
 
 ### 2. Indian F&O Derivative Engine
-- **Index & Stock Presets**: 1-click selectors for NIFTY (25), BANKNIFTY (15), FINNIFTY (25), SENSEX (10), MIDCPNIFTY (50), RELIANCE, HDFCBANK, etc.
+- **Index & Stock Presets**: 1-click selectors for NIFTY (65), BANKNIFTY (30), FINNIFTY (60), SENSEX (20), MIDCPNIFTY (120), BANKEX (30), RELIANCE (500), HDFCBANK (650), ICICIBANK (700), INFY (400), TATAMOTORS (550), SBIN (750), TCS (225), etc., with user-editable lot sizes in settings.
 - **Options Analytics**:
   - Call (CE) vs Put (PE) edge breakdown.
   - Option Buying vs Option Selling (Theta decay vs Delta momentum).

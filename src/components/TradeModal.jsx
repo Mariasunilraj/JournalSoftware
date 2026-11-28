@@ -55,9 +55,9 @@ export default function TradeModal({
       optionAction: 'Buy',
       strikePrice: 24800,
       expiryDate: today,
-      lotSize: 25,
+      lotSize: settings?.lotSizes?.NIFTY || 65,
       lots: 1,
-      quantity: 25,
+      quantity: settings?.lotSizes?.NIFTY || 65,
       entryPrice: '',
       exitPrice: '',
       marginUsed: 0,
@@ -119,7 +119,7 @@ export default function TradeModal({
   // When underlying changes, update default lot size and symbol suggestion
   const handleUnderlyingChange = (underlyingName) => {
     const found = INDIAN_UNDERLYINGS.find((u) => u.name === underlyingName);
-    const newLotSize = found ? found.defaultLotSize : 1;
+    const newLotSize = settings?.lotSizes?.[underlyingName] || (found ? found.defaultLotSize : 1);
     const newExchange = found ? found.exchange : 'NSE';
 
     setFormData((prev) => {
@@ -333,20 +333,23 @@ export default function TradeModal({
                   Quick Indian Underlying Selector:
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {INDIAN_UNDERLYINGS.map((item) => (
-                    <button
-                      type="button"
-                      key={item.name}
-                      onClick={() => handleUnderlyingChange(item.name)}
-                      className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold transition ${
-                        formData.underlying === item.name
-                          ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-500/20'
-                          : 'bg-neutral-900 text-neutral-300 hover:bg-neutral-800 border border-neutral-800'
-                      }`}
-                    >
-                      {item.name} {item.defaultLotSize > 1 ? `(${item.defaultLotSize})` : ''}
-                    </button>
-                  ))}
+                  {INDIAN_UNDERLYINGS.map((item) => {
+                    const currentLot = settings?.lotSizes?.[item.name] || item.defaultLotSize;
+                    return (
+                      <button
+                        type="button"
+                        key={item.name}
+                        onClick={() => handleUnderlyingChange(item.name)}
+                        className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold transition ${
+                          formData.underlying === item.name
+                            ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-500/20'
+                            : 'bg-neutral-900 text-neutral-300 hover:bg-neutral-800 border border-neutral-800'
+                        }`}
+                      >
+                        {item.name} {currentLot > 1 ? `(${currentLot})` : ''}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
