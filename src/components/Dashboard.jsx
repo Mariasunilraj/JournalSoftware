@@ -11,6 +11,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
+  Activity,
 } from 'lucide-react';
 import { formatINR, formatIndianDate, formatINRCompact } from '../utils/calculations';
 
@@ -169,6 +170,80 @@ export default function Dashboard({
 
   const initialCap = Number(settings?.initialCapital) || 0;
   const currentEquity = initialCap + (netPnL || 0);
+
+  // 0. Whole Journey Lifetime Stats (Total Profit After Tax, Total Loss + Tax, Net Loss/Gain)
+  const journeyStats = useMemo(() => {
+    if (!hasTrades) {
+      return {
+        totalProfitAfterTax: 184650.0,
+        totalLossWithTax: 74230.5,
+        netOutcome: 110419.5,
+        isNetGain: true,
+        winGrossProfit: 196850.0,
+        winCharges: 12200.0,
+        lossGrossLoss: 66800.0,
+        lossCharges: 7430.5,
+        totalTaxes: 19630.5,
+        winningTradesCount: 38,
+        losingTradesCount: 18,
+        totalClosedTrades: 56,
+        profitRatio: 71.3,
+      };
+    }
+
+    let profitAfterTax = 0;
+    let winGross = 0;
+    let winTax = 0;
+    let winCount = 0;
+
+    let lossWithTax = 0;
+    let lossGross = 0;
+    let lossTax = 0;
+    let lossCount = 0;
+
+    let totalChargesSum = 0;
+
+    safeTrades.forEach((t) => {
+      if (!t || t.status === 'Open') return;
+      const net = Number(t.netPnL) || 0;
+      const gross = Number(t.grossPnL) || 0;
+      const charges = Number(t.charges) || 0;
+      totalChargesSum += charges;
+
+      if (net > 0) {
+        profitAfterTax += net;
+        winGross += Math.max(0, gross);
+        winTax += charges;
+        winCount++;
+      } else if (net < 0) {
+        lossWithTax += Math.abs(net);
+        lossGross += Math.abs(gross);
+        lossTax += charges;
+        lossCount++;
+      }
+    });
+
+    const netOutcome = profitAfterTax - lossWithTax;
+    const isNetGain = netOutcome >= 0;
+    const combinedVolume = profitAfterTax + lossWithTax;
+    const profitRatio = combinedVolume > 0 ? (profitAfterTax / combinedVolume) * 100 : 50;
+
+    return {
+      totalProfitAfterTax: profitAfterTax,
+      totalLossWithTax: lossWithTax,
+      netOutcome,
+      isNetGain,
+      winGrossProfit: winGross,
+      winCharges: winTax,
+      lossGrossLoss: lossGross,
+      lossCharges: lossTax,
+      totalTaxes: totalChargesSum,
+      winningTradesCount: winCount,
+      losingTradesCount: lossCount,
+      totalClosedTrades: winCount + lossCount,
+      profitRatio: Math.min(100, Math.max(0, profitRatio)),
+    };
+  }, [hasTrades, safeTrades]);
 
   // 1. Largest Winning Trade
   const largestWinTrade = useMemo(() => {
@@ -376,6 +451,139 @@ export default function Dashboard({
           </div>
         </div>
       )}
+
+      {/* 0. Journey Performance Spotlight: Total Profit After Tax vs Loss + Tax (Displayed above Highest Profit Tab) */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#0b1318] via-[#0a0f14] to-[#07090c] border border-white/[0.1] p-4 sm:p-5 shadow-2xl space-y-3.5">
+        {/* Glow ambient background aura */}
+        <div
+          className={`absolute -top-16 -right-16 w-44 h-44 rounded-full blur-3xl pointer-events-none opacity-30 ${
+            journeyStats.isNetGain ? 'bg-[#00e676]' : 'bg-[#ef4444]'
+          }`}
+        />
+
+        {/* Card Header */}
+        <div className="flex items-center justify-between relative z-10">
+          <div className="flex items-center space-x-2.5">
+            <div
+              className={`p-2 rounded-xl flex items-center justify-center border ${
+                journeyStats.isNetGain
+                  ? 'bg-[#00e676]/10 border-[#00e676]/25 text-[#00e676]'
+                  : 'bg-rose-500/10 border-rose-500/25 text-rose-400'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs sm:text-sm font-black text-white tracking-wide uppercase">
+                  Journey Net P&amp;L
+                </span>
+                <span className="text-[10px] text-neutral-400 font-semibold hidden sm:inline">
+                  • Whole Journey
+                </span>
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-neutral-400 font-medium">
+                Overall trading journey after statutory taxes &amp; charges
+              </p>
+            </div>
+          </div>
+
+          <div
+            className={`px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-black tracking-wide border flex items-center space-x-1 ${
+              journeyStats.isNetGain
+                ? 'bg-[#00e676]/15 text-[#00e676] border-[#00e676]/30 shadow-[0_0_10px_rgba(0,230,118,0.2)]'
+                : 'bg-rose-500/15 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.2)]'
+            }`}
+          >
+            {journeyStats.isNetGain ? (
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            ) : (
+              <ArrowDownRight className="w-3.5 h-3.5" />
+            )}
+            <span>{journeyStats.isNetGain ? 'NET GAIN' : 'NET LOSS'}</span>
+          </div>
+        </div>
+
+        {/* Hero Big Metric: Net Loss or Gain */}
+        <div className="relative z-10 pt-0.5">
+          <div className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">
+            {journeyStats.isNetGain ? 'Total Journey Net Gain' : 'Total Journey Net Loss'}
+          </div>
+          <div
+            className={`text-2xl sm:text-3xl md:text-4xl font-black tracking-tight mt-0.5 ${
+              journeyStats.isNetGain
+                ? 'text-[#00e676] drop-shadow-[0_0_16px_rgba(0,230,118,0.35)]'
+                : 'text-rose-500 drop-shadow-[0_0_16px_rgba(244,63,94,0.35)]'
+            }`}
+          >
+            {journeyStats.isNetGain && journeyStats.netOutcome > 0
+              ? `+${formatINR(journeyStats.netOutcome)}`
+              : formatINR(journeyStats.netOutcome)}
+          </div>
+        </div>
+
+        {/* Dual Pillar Comparison: Profit After Tax vs Loss + Tax */}
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 relative z-10 pt-1">
+          {/* Left Column: Total Profit After Tax */}
+          <div className="p-3 sm:p-3.5 rounded-xl bg-[#042012]/80 border border-emerald-500/25 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center space-x-1 text-[10px] sm:text-xs font-bold text-[#00ff66] truncate">
+                <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Total Profit (After Tax)</span>
+              </div>
+              <div className="text-base sm:text-lg md:text-xl font-black text-[#00e676] tracking-tight mt-1 truncate">
+                +{formatINR(journeyStats.totalProfitAfterTax)}
+              </div>
+            </div>
+            <div className="text-[9px] sm:text-[10px] text-neutral-400 font-medium mt-1 truncate">
+              {journeyStats.winningTradesCount} winning {journeyStats.winningTradesCount === 1 ? 'trade' : 'trades'}
+            </div>
+          </div>
+
+          {/* Right Column: Total Loss + Tax */}
+          <div className="p-3 sm:p-3.5 rounded-xl bg-[#23080b]/80 border border-rose-500/25 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center space-x-1 text-[10px] sm:text-xs font-bold text-rose-400 truncate">
+                <TrendingDown className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Total Loss (+ Tax)</span>
+              </div>
+              <div className="text-base sm:text-lg md:text-xl font-black text-rose-500 tracking-tight mt-1 truncate">
+                -{formatINR(journeyStats.totalLossWithTax)}
+              </div>
+            </div>
+            <div className="text-[9px] sm:text-[10px] text-neutral-400 font-medium mt-1 truncate">
+              {journeyStats.losingTradesCount} losing {journeyStats.losingTradesCount === 1 ? 'trade' : 'trades'}
+            </div>
+          </div>
+        </div>
+
+        {/* Horizontal Profit vs Loss Ratio Bar */}
+        <div className="relative z-10 pt-0.5 space-y-1.5">
+          <div className="h-1.5 w-full bg-black/60 rounded-full overflow-hidden flex">
+            <div
+              style={{ width: `${journeyStats.profitRatio}%` }}
+              className="h-full bg-gradient-to-r from-[#00c853] to-[#00e676] transition-all duration-300"
+            />
+            <div
+              style={{ width: `${100 - journeyStats.profitRatio}%` }}
+              className="h-full bg-gradient-to-r from-[#ef4444] to-[#f43f5e] transition-all duration-300"
+            />
+          </div>
+          <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-semibold text-neutral-400">
+            <span className="text-[#00e676]">
+              Profit: {journeyStats.profitRatio.toFixed(1)}%
+            </span>
+            <span className="text-neutral-500">•</span>
+            <span className="text-neutral-400">
+              Charges: <strong className="text-neutral-200">{formatINR(journeyStats.totalTaxes)}</strong>
+            </span>
+            <span className="text-neutral-500">•</span>
+            <span className="text-rose-400">
+              Loss: {(100 - journeyStats.profitRatio).toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* 1. Hero Spotlight Card: "Large Win" */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#031d0e] via-[#072a16] to-[#041209] border border-emerald-500/30 p-4 sm:p-5 shadow-2xl">
