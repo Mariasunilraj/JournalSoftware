@@ -2,6 +2,44 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
+import loginHandler from './api/auth/login.js'
+import registerHandler from './api/auth/register.js'
+import logoutHandler from './api/auth/logout.js'
+import meHandler from './api/auth/me.js'
+import { getAuthenticatedUser } from './api/_auth.js'
+
+// Adapter to run Vercel serverless function handlers in Connect/Vite dev middleware
+function adaptVercelHandler(handler) {
+  return async (req, res) => {
+    if (!res.status) {
+      res.status = function (code) {
+        this.statusCode = code
+        return this
+      }
+    }
+    if (!res.json) {
+      res.json = function (data) {
+        if (!this.getHeader('Content-Type')) {
+          this.setHeader('Content-Type', 'application/json')
+        }
+        this.end(JSON.stringify(data))
+        return this
+      }
+    }
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body === undefined) {
+      let body = ''
+      for await (const chunk of req) {
+        body += chunk
+      }
+      try {
+        req.body = JSON.parse(body || '{}')
+      } catch (e) {
+        req.body = {}
+      }
+    }
+    return handler(req, res)
+  }
+}
 
 // Built-in Local Master Sync Middleware for instant Phone <-> Laptop Wi-Fi Sync
 function localSyncPlugin() {
@@ -13,51 +51,23 @@ function localSyncPlugin() {
   return {
     name: 'local-sync-plugin',
     configureServer(server) {
-      function extractSessionUser(req) {
-        const authHeader = req.headers['authorization'] || req.headers['x-session-token']
-        if (!authHeader || typeof authHeader !== 'string') {
-          return { authenticated: false, error: 'Authentication required. No session token provided.' }
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url ? req.url.split('?')[0] : ''
+
+        // Auth Endpoints (mirroring Vercel serverless in local dev)
+        if (url === '/api/auth/login') {
+          return adaptVercelHandler(loginHandler)(req, res)
+        }
+        if (url === '/api/auth/register') {
+          return adaptVercelHandler(registerHandler)(req, res)
+        }
+        if (url === '/api/auth/logout') {
+          return adaptVercelHandler(logoutHandler)(req, res)
+        }
+        if (url === '/api/auth/me') {
+          return adaptVercelHandler(meHandler)(req, res)
         }
 
-        let token = authHeader.trim()
-        if (token.startsWith('Bearer ')) {
-          token = token.slice(7).trim()
-        }
-
-        if (!token.startsWith('delta_sess_')) {
-          return { authenticated: false, error: 'Invalid session token format.' }
-        }
-
-        try {
-          const b64 = token.slice('delta_sess_'.length)
-          const decoded = Buffer.from(b64, 'base64').toString('utf-8')
-          const session = JSON.parse(decoded)
-
-          if (!session || typeof session !== 'object' || Array.isArray(session)) {
-            return { authenticated: false, error: 'Malformed session token payload.' }
-          }
-
-          const userId = session.uid || session.userId
-          if (!userId || typeof userId !== 'string') {
-            return { authenticated: false, error: 'Session token does not contain a valid user identifier.' }
-          }
-
-          const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '')
-          if (!safeUserId || safeUserId === 'default' || safeUserId.length < 3) {
-            return { authenticated: false, error: 'Invalid or restricted user identifier.' }
-          }
-
-          if (session.exp && typeof session.exp === 'number' && Date.now() > session.exp) {
-            return { authenticated: false, error: 'Session token has expired. Please re-authenticate.' }
-          }
-
-          return { authenticated: true, userId: safeUserId }
-        } catch (err) {
-          return { authenticated: false, error: 'Failed to verify session token.' }
-        }
-      }
-
-      server.middlewares.use((req, res, next) => {
         if (req.url && req.url.startsWith('/api/sync')) {
           if (req.method === 'OPTIONS') {
             res.statusCode = 204
@@ -78,15 +88,15 @@ function localSyncPlugin() {
 
           // User Data Sync (Trades, Diary, Capital, Risk Settings)
           // 1. Authenticate request & derive userId from session token
-          const auth = extractSessionUser(req)
-          if (!auth.authenticated) {
+          const sessionUser = getAuthenticatedUser(req)
+          if (!sessionUser || !sessionUser.userId) {
             res.statusCode = 401
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: auth.error }))
+            res.end(JSON.stringify({ error: 'Authentication required. Valid session required for sync.' }))
             return
           }
 
-          const userId = auth.userId
+          const userId = sessionUser.userId
           const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
           const userFile = path.join(dataDir, `user_${safeUserId}.json`)
 

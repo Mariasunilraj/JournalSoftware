@@ -20,6 +20,7 @@ export default function AuthView({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Login form state - clean, zero prefilled personal data
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -31,24 +32,31 @@ export default function AuthView({ onLoginSuccess }) {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setLoading(true);
 
-    const res = login(loginIdentifier, loginPassword);
-    if (!res.success) {
-      setErrorMsg(res.error);
-      return;
+    try {
+      const res = await login(loginIdentifier, loginPassword);
+      if (!res.success) {
+        setErrorMsg(res.error || 'Invalid username/email or password.');
+        return;
+      }
+
+      setSuccessMsg(`Welcome back, ${res.user.name || res.user.username}!`);
+      setTimeout(() => {
+        onLoginSuccess(res.user);
+      }, 400);
+    } catch (err) {
+      setErrorMsg('An unexpected error occurred during login. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    setSuccessMsg(`Welcome back, ${res.user.name || res.user.username}!`);
-    setTimeout(() => {
-      onLoginSuccess(res.user);
-    }, 400);
   };
 
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -58,22 +66,35 @@ export default function AuthView({ onLoginSuccess }) {
       return;
     }
 
-    const res = register({
-      username: regUsername,
-      email: regUsername,
-      name: regName,
-      password: regPassword,
-    });
-
-    if (!res.success) {
-      setErrorMsg(res.error);
+    if (regPassword.length < 6) {
+      setErrorMsg('Password must be at least 6 characters long.');
       return;
     }
 
-    setSuccessMsg('Account registered successfully! Provisioning empty workspace...');
-    setTimeout(() => {
-      onLoginSuccess(res.user);
-    }, 600);
+    setLoading(true);
+
+    try {
+      const res = await register({
+        username: regUsername,
+        email: regUsername,
+        name: regName,
+        password: regPassword,
+      });
+
+      if (!res.success) {
+        setErrorMsg(res.error || 'Registration failed.');
+        return;
+      }
+
+      setSuccessMsg('Account registered successfully! Provisioning empty workspace...');
+      setTimeout(() => {
+        onLoginSuccess(res.user);
+      }, 600);
+    } catch (err) {
+      setErrorMsg('An unexpected error occurred during registration. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -207,10 +228,17 @@ export default function AuthView({ onLoginSuccess }) {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm tracking-wide flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(0,230,118,0.3)] transition active:scale-95"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm tracking-wide flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(0,230,118,0.3)] transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Enter Trading Journal</span>
-                <ArrowRight className="w-4 h-4" />
+                {loading ? (
+                  <span>Authenticating...</span>
+                ) : (
+                  <>
+                    <span>Enter Trading Journal</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
           )}
@@ -305,10 +333,17 @@ export default function AuthView({ onLoginSuccess }) {
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-black text-sm tracking-wide flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition active:scale-95"
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-black text-sm tracking-wide flex items-center justify-center space-x-2 shadow-[0_0_20px_rgba(34,211,238,0.3)] transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Create My Trading Account</span>
-                <ArrowRight className="w-4 h-4" />
+                {loading ? (
+                  <span>Registering Account...</span>
+                ) : (
+                  <>
+                    <span>Create My Trading Account</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
           )}

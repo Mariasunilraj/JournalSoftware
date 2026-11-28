@@ -48,5 +48,25 @@ export async function ensureTables(sql) {
     );
   `;
 
+  await sql`
+    CREATE TABLE IF NOT EXISTS delta_users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at BIGINT DEFAULT 0
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS delta_sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at BIGINT DEFAULT 0,
+      expires_at BIGINT DEFAULT 0
+    );
+  `;
+
   isInitialized = true;
 }

@@ -1,69 +1,23 @@
 import { getDatabase, ensureTables } from '../_db.js';
+import { getAuthenticatedUser } from '../_auth.js';
 
 const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10MB payload cap
 const MAX_TRADES = 50000;
 const MAX_DIARY_ENTRIES = 10000;
 const MAX_CAPITAL_LOGS = 5000;
 
-/**
- * Validates session token and derives authenticated userId
- */
-function extractSessionUser(req) {
-  const authHeader = req.headers['authorization'] || req.headers['x-session-token'];
-  if (!authHeader || typeof authHeader !== 'string') {
-    return { authenticated: false, error: 'Authentication required. No session authorization token provided.' };
-  }
-
-  let token = authHeader.trim();
-  if (token.startsWith('Bearer ')) {
-    token = token.slice(7).trim();
-  }
-
-  if (!token.startsWith('delta_sess_')) {
-    return { authenticated: false, error: 'Invalid session token format.' };
-  }
-
-  try {
-    const b64 = token.slice('delta_sess_'.length);
-    const decoded = Buffer.from(b64, 'base64').toString('utf-8');
-    const session = JSON.parse(decoded);
-
-    if (!session || typeof session !== 'object' || Array.isArray(session)) {
-      return { authenticated: false, error: 'Malformed session token payload.' };
-    }
-
-    const userId = session.uid || session.userId;
-    if (!userId || typeof userId !== 'string') {
-      return { authenticated: false, error: 'Session token does not contain a valid user identifier.' };
-    }
-
-    const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!safeUserId || safeUserId === 'default' || safeUserId.length < 3) {
-      return { authenticated: false, error: 'Invalid or restricted user identifier.' };
-    }
-
-    if (session.exp && typeof session.exp === 'number' && Date.now() > session.exp) {
-      return { authenticated: false, error: 'Session token has expired. Please re-authenticate.' };
-    }
-
-    return { authenticated: true, userId: safeUserId };
-  } catch (err) {
-    return { authenticated: false, error: 'Failed to verify session token.' };
-  }
-}
-
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
 
-  // 1. Authenticate request & derive userId from session token (never from query/body)
-  const auth = extractSessionUser(req);
-  if (!auth.authenticated) {
-    return res.status(401).json({ error: auth.error });
+  // 1. Authenticate request & derive userId from signed session (cookie or token)
+  const sessionUser = getAuthenticatedUser(req);
+  if (!sessionUser || !sessionUser.userId) {
+    return res.status(401).json({ error: 'Authentication required. Valid session required for sync.' });
   }
 
-  const userId = auth.userId;
+  const userId = sessionUser.userId;
 
   // 2. Validate request payload size
   const contentLength = parseInt(req.headers['content-length'] || '0', 10);

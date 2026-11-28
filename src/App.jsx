@@ -39,11 +39,17 @@ import {
   addDeletedTradeId,
 } from './utils/storage';
 import { calculateAnalytics } from './utils/analytics';
-import { getActiveSession, logout as authLogout, initAuth } from './utils/auth';
+import { getActiveSession, logout as authLogout, initAuth, verifySessionWithServer } from './utils/auth';
 
 export default function App() {
   useEffect(() => {
     initAuth();
+    // Validate session token with server
+    verifySessionWithServer().then((validatedUser) => {
+      if (!validatedUser) {
+        setCurrentUser(null);
+      }
+    });
   }, []);
 
   // Authentication State

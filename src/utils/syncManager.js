@@ -78,6 +78,7 @@ export async function pushDataToSyncServer(userId, data) {
 
     const res = await fetch('/api/sync', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.token}`,
@@ -108,6 +109,7 @@ export async function pullDataFromSyncServer(userId) {
   try {
     const res = await fetch('/api/sync', {
       cache: 'no-store',
+      credentials: 'include',
       headers: {
         'Authorization': `Bearer ${session.token}`,
       },
