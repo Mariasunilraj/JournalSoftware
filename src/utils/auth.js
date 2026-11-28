@@ -17,54 +17,10 @@ function hashPassword(pwd) {
 }
 
 /**
- * Synchronize registered users with master sync server
- */
-export async function syncUsersWithServer() {
-  try {
-    const res = await fetch('/api/sync/users');
-    if (!res.ok) return;
-    const serverUsers = await res.json();
-    if (!Array.isArray(serverUsers)) return;
-
-    const localUsers = getUsers();
-    const userMap = new Map();
-
-    // Add server users first
-    serverUsers.forEach((u) => {
-      if (u.id) userMap.set(u.id, u);
-    });
-
-    // Add / update with local users
-    localUsers.forEach((u) => {
-      if (u.id) userMap.set(u.id, { ...userMap.get(u.id), ...u });
-    });
-
-    const merged = Array.from(userMap.values());
-    localStorage.setItem(USERS_KEY, JSON.stringify(merged));
-
-    // If local had new users that server didn't, push to server
-    if (merged.length > serverUsers.length) {
-      await fetch('/api/sync/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(merged),
-      });
-    }
-  } catch (err) {
-    // Graceful offline fallback
-  }
-}
-
-/**
- * Initialize user store & sync with server if available
+ * Initialize user store
  */
 export function initAuth() {
-  try {
-    // Background sync users with server
-    syncUsersWithServer();
-  } catch (err) {
-    console.error('Failed to initialize auth store:', err);
-  }
+  // Local user auth initialization
 }
 
 /**
@@ -184,12 +140,6 @@ export function register({ username, email, name, password }) {
   users.push(newUser);
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    // Immediately sync new user account with master server
-    fetch('/api/sync/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(users),
-    }).catch(() => {});
   } catch (e) {}
 
   // Auto-login session for newly registered user
@@ -198,7 +148,6 @@ export function register({ username, email, name, password }) {
     username: newUser.username,
     email: newUser.email,
     name: newUser.name,
-    isPrimary: false,
     token: `delta_sec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
     loginTime: new Date().toISOString(),
   };

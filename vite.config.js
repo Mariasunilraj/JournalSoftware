@@ -26,35 +26,6 @@ function localSyncPlugin() {
             return
           }
 
-          // Registered Users DB Sync Endpoint
-          if (req.url.startsWith('/api/sync/users')) {
-            const usersFile = path.join(dataDir, 'users.json')
-            if (req.method === 'GET') {
-              res.setHeader('Content-Type', 'application/json')
-              if (fs.existsSync(usersFile)) {
-                res.end(fs.readFileSync(usersFile, 'utf-8'))
-              } else {
-                res.end(JSON.stringify([]))
-              }
-              return
-            }
-            if (req.method === 'POST') {
-              let body = ''
-              req.on('data', (chunk) => { body += chunk })
-              req.on('end', () => {
-                try {
-                  fs.writeFileSync(usersFile, body, 'utf-8')
-                  res.setHeader('Content-Type', 'application/json')
-                  res.end(JSON.stringify({ success: true }))
-                } catch (err) {
-                  res.statusCode = 400
-                  res.end(JSON.stringify({ error: err.message }))
-                }
-              })
-              return
-            }
-          }
-
           // Server Health / Status Check Endpoint
           if (req.url.startsWith('/api/sync/status')) {
             res.setHeader('Content-Type', 'application/json')

@@ -48,13 +48,5 @@ export async function ensureTables(sql) {
     );
   `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS delta_users (
-      id TEXT PRIMARY KEY,
-      data JSONB NOT NULL,
-      updated_at BIGINT DEFAULT 0
-    );
-  `;
-
   isInitialized = true;
 }
