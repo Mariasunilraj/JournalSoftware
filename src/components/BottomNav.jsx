@@ -31,7 +31,7 @@ export default function BottomNav({ activeTab, setActiveTab }) {
     },
     {
       id: 'data',
-      label: 'Backup',
+      label: 'Data',
       icon: Database,
     },
   ];

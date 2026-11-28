@@ -81,8 +81,8 @@ export default function Sidebar({
     },
     {
       id: 'data',
-      label: 'Backup & Export',
-      sublabel: 'CSV, JSON & Ledger',
+      label: 'Data Management',
+      sublabel: 'CSV & Tax Slabs',
       icon: Database,
     },
   ];
