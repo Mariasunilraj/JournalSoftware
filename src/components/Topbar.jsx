@@ -33,7 +33,7 @@ export default function Topbar({
   const isNetProfit = netPnL >= 0;
 
   return (
-    <header className="sticky top-0 z-30 bg-black/95 backdrop-blur-md border-b border-neutral-800/80 text-white no-print px-3.5 sm:px-6 py-2.5 sm:py-3">
+    <header className="sticky top-0 z-30 bg-[rgba(10,12,16,0.72)] backdrop-blur-2xl backdrop-saturate-150 border-b border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.5),inset_0_-1px_0_rgba(255,255,255,0.06)] text-white no-print px-3.5 sm:px-6 py-2.5 sm:py-3">
       <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto">
         {/* Left: Ascending Neon Chart Logo + DELTA JOURNAL + Track . Journal . Grow */}
         <div className="flex items-center space-x-2.5 min-w-0">
