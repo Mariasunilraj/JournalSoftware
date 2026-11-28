@@ -21,7 +21,10 @@ import {
 import {
   exportTradesCSV,
   parseTradesCSV,
-} from '../utils/storage';
+  recoverAnyLocalTrades,
+  loadUserData,
+} from '../utils/storage.js';
+import { getActiveSession } from '../utils/auth.js';
 import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from '../utils/sampleData';
 import { DEFAULT_RISK_SETTINGS, DEFAULT_EXCHANGE_RATES, DEFAULT_INDEX_EXPIRY_DAYS, DEFAULT_LOT_SIZES } from '../utils/constants';
 import { formatIndianDate } from '../utils/calculations';
@@ -656,15 +659,42 @@ export default function DataManagementView({
                   Save Custom Rates, Lots & Expiry
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleRepairAllTaxes}
-                  disabled={isRepairingTaxes || trades.length === 0}
-                  className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00c853] via-[#00e676] to-[#00ff7f] text-black text-xs font-black shadow-[0_0_20px_rgba(0,230,118,0.25)] hover:shadow-[0_0_28px_rgba(0,230,118,0.4)] active:scale-95 transition disabled:opacity-40 min-h-[44px]"
-                >
-                  <Wrench className="w-4 h-4" />
-                  <span>{isRepairingTaxes ? 'Recalculating...' : 'Recalculate & Repair All Trade Taxes'}</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const session = getActiveSession();
+                      if (!session?.id) return;
+                      const count = recoverAnyLocalTrades(session.id);
+                      if (count > 0) {
+                        const data = loadUserData(session.id);
+                        onUpdateAllData({
+                          trades: data.trades,
+                          diary: data.diary,
+                          capitalLogs: data.capitalLogs,
+                          settings: data.settings,
+                        });
+                        notify(`Successfully recovered ${count} past trades from your browser storage!`);
+                      } else {
+                        notify('No additional unlinked trades found in this browser storage.');
+                      }
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-400 text-xs font-bold border border-cyan-500/30 transition min-h-[44px]"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Scan & Recover Browser Trades</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRepairAllTaxes}
+                    disabled={isRepairingTaxes || trades.length === 0}
+                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00c853] via-[#00e676] to-[#00ff7f] text-black text-xs font-black shadow-[0_0_20px_rgba(0,230,118,0.25)] hover:shadow-[0_0_28px_rgba(0,230,118,0.4)] active:scale-95 transition disabled:opacity-40 min-h-[44px]"
+                  >
+                    <Wrench className="w-4 h-4" />
+                    <span>{isRepairingTaxes ? 'Recalculating...' : 'Recalculate & Repair All Trade Taxes'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

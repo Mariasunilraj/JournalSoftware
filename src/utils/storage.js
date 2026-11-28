@@ -1,6 +1,6 @@
-import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from './sampleData';
-import { DEFAULT_RISK_SETTINGS } from './constants';
-import { getActiveSession } from './auth';
+import { SAMPLE_TRADES, SAMPLE_DIARY, SAMPLE_CAPITAL_LOGS } from './sampleData.js';
+import { DEFAULT_RISK_SETTINGS } from './constants.js';
+import { getActiveSession } from './auth.js';
 
 // Legacy keys
 const LEGACY_TRADES_KEY = 'fno_journal_trades_v1';
@@ -91,8 +91,117 @@ export function wipeUserAccountData(userId) {
 }
 
 /**
+ * Automatically migrates existing local browser trades (from prior Sunil or legacy partitions)
+ * into a newly registered or authenticated user partition so past trade history is never lost.
+ */
+export function migrateLegacyDataForUser(userId) {
+  if (!userId) return false;
+  const keys = getUserStorageKeys(userId);
+
+  try {
+    const existingRaw = localStorage.getItem(keys.trades);
+    const existing = existingRaw ? JSON.parse(existingRaw) : [];
+    if (Array.isArray(existing) && existing.length > 0) {
+      return false; // User already has trades in their active partition
+    }
+
+    // Candidate legacy partitions in browser localStorage
+    const candidateKeys = [
+      'delta_usr_usr_sunil_08_trades_v2',
+      'delta_usr_guest_trades_v2',
+      LEGACY_TRADES_KEY,
+    ];
+
+    // Scan for any other prior partition in localStorage
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('delta_usr_') && k.endsWith('_trades_v2') && k !== keys.trades) {
+          if (!candidateKeys.includes(k)) {
+            candidateKeys.push(k);
+          }
+        }
+      }
+    }
+
+    for (const candKey of candidateKeys) {
+      const candRaw = localStorage.getItem(candKey);
+      if (candRaw) {
+        try {
+          const candTrades = JSON.parse(candRaw);
+          if (Array.isArray(candTrades) && candTrades.length > 0) {
+            // Re-assign userId to the newly authenticated user
+            const migrated = candTrades.map((t) => ({ ...t, userId }));
+            localStorage.setItem(keys.trades, JSON.stringify(migrated));
+
+            // Also migrate diary, capital, settings if present
+            if (candKey === 'delta_usr_usr_sunil_08_trades_v2') {
+              const diary = localStorage.getItem('delta_usr_usr_sunil_08_diary_v2');
+              if (diary) localStorage.setItem(keys.diary, diary);
+              const cap = localStorage.getItem('delta_usr_usr_sunil_08_capital_v2');
+              if (cap) localStorage.setItem(keys.capital, cap);
+              const sett = localStorage.getItem('delta_usr_usr_sunil_08_settings_v2');
+              if (sett) localStorage.setItem(keys.settings, sett);
+            } else if (candKey === LEGACY_TRADES_KEY) {
+              const diary = localStorage.getItem(LEGACY_DIARY_KEY);
+              if (diary) localStorage.setItem(keys.diary, diary);
+              const cap = localStorage.getItem(LEGACY_CAPITAL_KEY);
+              if (cap) localStorage.setItem(keys.capital, cap);
+              const sett = localStorage.getItem(LEGACY_SETTINGS_KEY);
+              if (sett) localStorage.setItem(keys.settings, sett);
+            }
+            return true;
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.debug('Legacy trade migration check:', err);
+  }
+  return false;
+}
+
+/**
+ * Recovers all trades found across any local browser storage partitions and links them to the active user
+ */
+export function recoverAnyLocalTrades(userId) {
+  if (!userId || typeof localStorage === 'undefined') return 0;
+  const keys = getUserStorageKeys(userId);
+  const totalFound = [];
+  const seenIds = new Set();
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.includes('trades') || k === LEGACY_TRADES_KEY)) {
+        try {
+          const raw = localStorage.getItem(k);
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            for (const item of list) {
+              if (item && item.symbol && (!item.id || !seenIds.has(item.id))) {
+                if (item.id) seenIds.add(item.id);
+                totalFound.push({ ...item, userId });
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (totalFound.length > 0) {
+      localStorage.setItem(keys.trades, JSON.stringify(totalFound));
+      return totalFound.length;
+    }
+  } catch (e) {
+    console.error('Error recovering trades:', e);
+  }
+  return 0;
+}
+
+/**
  * Load user data with strict Row-Level Security (RLS)
- * Zero initial data for all accounts
+ * Zero initial data for fresh browsers, automatic preservation of existing local trade history
  */
 export function loadUserData(userId) {
   if (!userId) {
@@ -103,6 +212,9 @@ export function loadUserData(userId) {
       settings: DEFAULT_RISK_SETTINGS,
     };
   }
+
+  // Preserve existing trade history if user is logging into a newly created account on this browser
+  migrateLegacyDataForUser(userId);
 
   const keys = getUserStorageKeys(userId);
 
