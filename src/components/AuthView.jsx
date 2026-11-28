@@ -86,10 +86,10 @@ export default function AuthView({ onLoginSuccess }) {
         return;
       }
 
-      setSuccessMsg('Account registered successfully! Provisioning empty workspace...');
+      setSuccessMsg('Account registered successfully! Loading your journal...');
       setTimeout(() => {
         onLoginSuccess(res.user);
-      }, 600);
+      }, 500);
     } catch (err) {
       setErrorMsg('An unexpected error occurred during registration. Please try again.');
     } finally {
@@ -327,7 +327,7 @@ export default function AuthView({ onLoginSuccess }) {
               <div className="p-2.5 rounded-xl bg-neutral-900/60 border border-neutral-800 text-[11px] text-neutral-400 flex items-start space-x-2">
                 <Database className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Zero Initial Data Guarantee:</strong> Newly created accounts start completely fresh (0 trades, 0 logs). All records are private and protected with Row-Level Security.
+                  <strong>Secure Multi-Tenant Journal:</strong> Private cloud & local sync with Row-Level Security. Existing trade history and diary entries are preserved and linked to your account.
                 </span>
               </div>
 

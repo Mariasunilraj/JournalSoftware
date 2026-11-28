@@ -19,8 +19,8 @@ export default async function handler(req, res) {
 
   const clientIp = getClientIp(req);
 
-  // 1. Rate Limiting Check (5 attempts per 15 minutes)
-  const rateCheck = checkRateLimit(`login_${clientIp}`, 5, 15 * 60 * 1000);
+  // 1. Rate Limiting Check (10 attempts per 15 minutes)
+  const rateCheck = checkRateLimit(`login_${clientIp}`, 10, 15 * 60 * 1000);
   if (!rateCheck.allowed) {
     return res.status(429).json({
       error: `Too many login attempts. Please try again in ${rateCheck.retryAfter} seconds.`,
@@ -29,7 +29,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    let body = {};
+    if (typeof req.body === 'string') {
+      try {
+        body = JSON.parse(req.body);
+      } catch (e) {
+        body = {};
+      }
+    } else if (Buffer.isBuffer(req.body)) {
+      try {
+        body = JSON.parse(req.body.toString('utf-8'));
+      } catch (e) {
+        body = {};
+      }
+    } else if (req.body && typeof req.body === 'object') {
+      body = req.body;
+    }
+
     const identifier = (body.identifier || body.username || body.email || '').trim();
     const password = (body.password || '').trim();
 
@@ -69,6 +85,8 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Server Login Error:', error);
-    return res.status(500).json({ error: 'An unexpected server error occurred during login.' });
+    return res.status(500).json({
+      error: error.message || 'An unexpected server error occurred during login.',
+    });
   }
 }

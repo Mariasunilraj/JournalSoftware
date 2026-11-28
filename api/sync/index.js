@@ -56,6 +56,45 @@ export default async function handler(req, res) {
         });
       }
 
+      // Seamless Legacy Data Recovery:
+      // If the authenticated user has 0 records, check if legacy trades exist in the database
+      // under Sunil's former account ID or default partition so history is never lost!
+      try {
+        const legacyRows = await sql`
+          SELECT trades, diary, capital_logs, settings, updated_at
+          FROM delta_sync_records
+          WHERE user_id IN ('usr_sunil_08', 'default', 'usr_default', 'usr_maria_sunil_raj')
+          ORDER BY updated_at DESC
+          LIMIT 1;
+        `;
+
+        if (legacyRows && legacyRows.length > 0 && Array.isArray(legacyRows[0].trades) && legacyRows[0].trades.length > 0) {
+          const leg = legacyRows[0];
+          // Auto-link to the new authenticated user
+          await sql`
+            INSERT INTO delta_sync_records (user_id, trades, diary, capital_logs, settings, updated_at)
+            VALUES (${userId}, ${JSON.stringify(leg.trades)}::jsonb, ${JSON.stringify(leg.diary || [])}::jsonb, ${JSON.stringify(leg.capital_logs || [])}::jsonb, ${JSON.stringify(leg.settings || null)}::jsonb, ${Date.now()})
+            ON CONFLICT (user_id) DO UPDATE SET
+              trades = EXCLUDED.trades,
+              diary = EXCLUDED.diary,
+              capital_logs = EXCLUDED.capital_logs,
+              settings = EXCLUDED.settings,
+              updated_at = EXCLUDED.updated_at;
+          `;
+
+          return res.status(200).json({
+            trades: leg.trades || [],
+            diary: leg.diary || [],
+            capitalLogs: leg.capital_logs || [],
+            settings: leg.settings || null,
+            updatedAt: Number(leg.updated_at || 0),
+            recoveredFromLegacy: true,
+          });
+        }
+      } catch (recoveryErr) {
+        console.warn('Legacy sync recovery notice:', recoveryErr.message);
+      }
+
       return res.status(200).json({
         trades: [],
         diary: [],
