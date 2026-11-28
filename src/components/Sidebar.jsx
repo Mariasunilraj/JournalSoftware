@@ -96,13 +96,13 @@ export default function Sidebar({
       {isOpenMobile && (
         <div
           onClick={() => setIsOpenMobile(false)}
-          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm lg:hidden transition-opacity duration-200"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md lg:hidden transition-opacity duration-200"
         />
       )}
 
-      {/* Side Navigation Bar - Fintech Modern Jet Black (Hardware accelerated) */}
+      {/* Side Navigation Bar - Frosted Glassmorphism Cyber-Fintech */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen bg-black border-r border-neutral-800 flex flex-col justify-between transition-[width,transform] duration-200 ease-out will-change-transform no-print ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen bg-[rgba(10,12,16,0.78)] backdrop-blur-2xl backdrop-saturate-150 border-r border-white/[0.08] shadow-[4px_0_30px_rgba(0,0,0,0.6),inset_-1px_0_1px_rgba(255,255,255,0.06)] flex flex-col justify-between transition-[width,transform] duration-200 ease-out will-change-transform no-print ${
           isCollapsed ? 'w-20' : 'w-72'
         } ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -110,11 +110,11 @@ export default function Sidebar({
       >
         {/* Top Header Section with High-Precision Brand Logo */}
         {isCollapsed ? (
-          <div className="py-4 px-2 border-b border-neutral-800/80 flex flex-col items-center justify-center gap-2">
+          <div className="py-4 px-2 border-b border-white/[0.08] flex flex-col items-center justify-center gap-2">
             {/* Centered Brand Logo Button (Click to Expand) */}
             <button
               onClick={() => setIsCollapsed(false)}
-              className="w-10 h-10 rounded-xl bg-black border border-emerald-500/40 hover:border-emerald-400 p-0.5 flex items-center justify-center shadow-[0_0_14px_rgba(0,230,118,0.3)] transition active:scale-95 group relative"
+              className="w-10 h-10 rounded-xl bg-black/80 border border-emerald-500/40 hover:border-emerald-400 p-0.5 flex items-center justify-center shadow-[0_0_14px_rgba(0,230,118,0.3)] transition active:scale-95 group relative"
               title="Expand Delta Journal Sidebar"
             >
               <img
@@ -132,17 +132,17 @@ export default function Sidebar({
             </button>
             <button
               onClick={() => setIsCollapsed(false)}
-              className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-900 transition"
+              className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-white/[0.06] transition"
               title="Expand Sidebar"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
-          <div className="p-3.5 border-b border-neutral-800/80 flex items-center justify-between min-w-0">
+          <div className="p-3.5 border-b border-white/[0.08] flex items-center justify-between min-w-0">
             <div className="flex items-center space-x-2.5 min-w-0">
               {/* Brand Logo Emblem */}
-              <div className="w-10 h-10 rounded-xl bg-black border border-emerald-500/40 p-0.5 flex items-center justify-center shadow-[0_0_14px_rgba(0,230,118,0.3)] shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-black/80 border border-emerald-500/40 p-0.5 flex items-center justify-center shadow-[0_0_14px_rgba(0,230,118,0.3)] shrink-0">
                 <img
                   src="/logo-circle.png"
                   alt="Delta Journal"
@@ -176,7 +176,7 @@ export default function Sidebar({
             {/* Desktop Collapse Button */}
             <button
               onClick={() => setIsCollapsed(true)}
-              className="hidden lg:flex p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 transition border border-transparent hover:border-neutral-800 shrink-0 ml-1"
+              className="hidden lg:flex p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.06] transition border border-transparent hover:border-white/[0.08] shrink-0 ml-1"
               title="Collapse Sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -185,7 +185,7 @@ export default function Sidebar({
             {/* Mobile Close Button */}
             <button
               onClick={() => setIsOpenMobile(false)}
-              className="lg:hidden p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 shrink-0 ml-1"
+              className="lg:hidden p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.06] shrink-0 ml-1"
             >
               <X className="w-5 h-5" />
             </button>
@@ -210,10 +210,10 @@ export default function Sidebar({
                 }}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center px-2 py-3' : 'space-x-3 px-3 py-2.5'
-                } rounded-xl text-left transition-colors duration-150 group ${
+                } rounded-xl text-left transition-all duration-150 group ${
                   isActive
-                    ? 'bg-neutral-900 text-white font-bold border border-neutral-700/80 shadow-[0_0_12px_rgba(0,0,0,0.5)] relative'
-                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900/60 border border-transparent'
+                    ? 'bg-gradient-to-r from-emerald-500/20 via-emerald-500/10 to-transparent text-white font-bold border border-emerald-500/30 shadow-[0_0_16px_rgba(0,230,118,0.2),inset_0_1px_1px_rgba(255,255,255,0.1)] relative'
+                    : 'text-neutral-400 hover:text-white hover:bg-white/[0.05] border border-transparent hover:border-white/[0.06]'
                 }`}
                 title={item.label}
               >
@@ -224,7 +224,7 @@ export default function Sidebar({
 
                 <Icon
                   className={`w-5 h-5 shrink-0 transition-colors ${
-                    isActive ? 'text-emerald-400' : 'text-neutral-500 group-hover:text-neutral-200'
+                    isActive ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(0,230,118,0.5)]' : 'text-neutral-500 group-hover:text-neutral-200'
                   }`}
                 />
 
@@ -240,7 +240,7 @@ export default function Sidebar({
                 {!isCollapsed && item.badge !== undefined && (
                   <span
                     className={`text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                      isActive ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-neutral-800 text-neutral-400'
+                      isActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-white/[0.06] text-neutral-400'
                     }`}
                   >
                     {item.badge}
@@ -251,46 +251,46 @@ export default function Sidebar({
           })}
         </div>
 
-        {/* Bottom P&L & Account Widget - Clean Fintech Monochrome */}
+        {/* Bottom P&L & Account Widget - Glassmorphic Card */}
         {!isCollapsed ? (
-          <div className="p-3 m-2.5 rounded-2xl bg-[#090909] border border-neutral-800 space-y-2.5">
+          <div className="p-3 m-2.5 rounded-2xl bg-[rgba(15,18,22,0.65)] backdrop-blur-xl border border-white/[0.1] shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.08)] space-y-2.5">
             <div className="flex items-center justify-between text-xs sm:text-sm text-neutral-400">
               <span className="uppercase tracking-widest font-semibold text-[10px] sm:text-xs">Net Realized</span>
-              <span className={`font-extrabold text-sm sm:text-base ${isNetProfit ? 'text-emerald-400' : 'text-rose-500'}`}>
+              <span className={`font-extrabold text-sm sm:text-base ${isNetProfit ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(0,230,118,0.4)]' : 'text-rose-500'}`}>
                 {formatINR(netPnL)}
               </span>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] sm:text-xs text-neutral-400 pt-1.5 border-t border-neutral-800/80">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs text-neutral-400 pt-1.5 border-t border-white/[0.08]">
               <span>Win Rate: <strong className="text-white">{analytics.winRate}%</strong></span>
               <span>Profit Factor: <strong className="text-white">{analytics.profitFactor}</strong></span>
             </div>
 
-            {/* Install App on Phone & Laptop Button */}
+            {/* Install App Button with Frosted Glass look */}
             <button
               type="button"
               onClick={onOpenInstallApp}
-              className="w-full py-2 px-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 hover:border-emerald-500/40 text-neutral-200 hover:text-emerald-400 text-xs font-bold flex items-center justify-between transition group"
+              className="w-full py-2 px-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-emerald-500/40 text-neutral-200 hover:text-emerald-400 text-xs font-bold flex items-center justify-between transition group active:scale-95"
               title="Install Delta Journal App on Phone or Laptop"
             >
               <div className="flex items-center space-x-2">
                 <Download className="w-3.5 h-3.5 text-emerald-400 transition-transform group-hover:scale-110" />
                 <span>Install App (Phone & PC)</span>
               </div>
-              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-mono">PWA</span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono">PWA</span>
             </button>
 
             {/* User Account & Logout Strip */}
-            <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between gap-1.5">
+            <div className="pt-2 border-t border-white/[0.08] flex items-center justify-between gap-1.5">
               <div className="flex items-center space-x-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center font-black text-[11px] text-emerald-400 shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center font-black text-[11px] text-emerald-400 shrink-0">
                   {(currentUser?.name || currentUser?.username || 'U').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0 truncate">
                   <div className="text-xs font-bold text-white truncate leading-none">
                     {currentUser?.name || 'Trader'}
                   </div>
-                  <div className="text-[10px] text-neutral-500 truncate leading-none mt-1">
+                  <div className="text-[10px] text-neutral-400 truncate leading-none mt-1">
                     {currentUser?.username || 'Individual Account'}
                   </div>
                 </div>
@@ -299,7 +299,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={onLogout}
-                className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition border border-transparent hover:border-neutral-800 shrink-0"
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-white/[0.06] transition border border-transparent hover:border-white/[0.08] shrink-0"
                 title="Sign Out of Account"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -307,23 +307,23 @@ export default function Sidebar({
             </div>
           </div>
         ) : (
-          <div className="p-3 border-t border-neutral-800 flex flex-col items-center gap-2.5">
+          <div className="p-3 border-t border-white/[0.08] flex flex-col items-center gap-2.5">
             <button
               type="button"
               onClick={onOpenInstallApp}
-              className="p-2 rounded-xl text-emerald-400 hover:text-white hover:bg-neutral-900 transition border border-transparent hover:border-neutral-800"
+              className="p-2 rounded-xl text-emerald-400 hover:text-white hover:bg-white/[0.06] transition border border-transparent hover:border-white/[0.08]"
               title="Install App on Phone or PC"
             >
               <Download className="w-4 h-4" />
             </button>
             <div
-              className={`w-3 h-3 rounded-full ${isNetProfit ? 'bg-emerald-400 shadow-[0_0_6px_#00e676]' : 'bg-rose-500 shadow-[0_0_6px_#ff3b57]'}`}
+              className={`w-3 h-3 rounded-full ${isNetProfit ? 'bg-emerald-400 shadow-[0_0_8px_#00e676]' : 'bg-rose-500 shadow-[0_0_8px_#ff3b57]'}`}
               title={`Net P&L: ${formatINR(netPnL)}`}
             />
             <button
               type="button"
               onClick={onLogout}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-white/[0.06] transition"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
