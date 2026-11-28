@@ -5,6 +5,7 @@ import {
   saveUserSettings,
   loadUserData,
 } from './storage';
+import { getActiveSession } from './auth';
 
 /**
  * Timestamp helpers for event-consistent master sync
@@ -59,7 +60,10 @@ export async function checkServerHealth() {
  * Pushes full user state to the master sync server
  */
 export async function pushDataToSyncServer(userId, data) {
-  if (!userId) return false;
+  const session = getActiveSession();
+  if (!session || !session.token) return false;
+  if (userId && session.id !== userId) return false;
+
   try {
     const now = Date.now();
     const payload = {
@@ -67,18 +71,23 @@ export async function pushDataToSyncServer(userId, data) {
       diary: data.diary || [],
       capitalLogs: data.capitalLogs || [],
       settings: data.settings || null,
+      deletedTradeIds: data.deletedTradeIds || [],
+      isFullReset: Boolean(data.isFullReset),
       updatedAt: now,
     };
 
-    const res = await fetch(`/api/sync?userId=${encodeURIComponent(userId)}`, {
+    const res = await fetch('/api/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.token}`,
+      },
       body: JSON.stringify(payload),
     });
 
     if (res.ok) {
-      setLastSynced(userId, now);
-      markLocalModified(userId);
+      setLastSynced(session.id, now);
+      markLocalModified(session.id);
       return true;
     }
   } catch (err) {
@@ -92,10 +101,16 @@ export async function pushDataToSyncServer(userId, data) {
  * Pulls latest data from master sync server
  */
 export async function pullDataFromSyncServer(userId) {
-  if (!userId) return null;
+  const session = getActiveSession();
+  if (!session || !session.token) return null;
+  if (userId && session.id !== userId) return null;
+
   try {
-    const res = await fetch(`/api/sync?userId=${encodeURIComponent(userId)}`, {
+    const res = await fetch('/api/sync', {
       cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${session.token}`,
+      },
     });
     if (!res.ok) return null;
     const data = await res.json();

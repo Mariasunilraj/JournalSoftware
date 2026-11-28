@@ -1,13 +1,74 @@
 import { getDatabase, ensureTables } from '../_db.js';
 
-export default async function handler(req, res) {
-  // CORS Headers for multi-device access
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024; // 10MB payload cap
+const MAX_TRADES = 50000;
+const MAX_DIARY_ENTRIES = 10000;
+const MAX_CAPITAL_LOGS = 5000;
 
+/**
+ * Validates session token and derives authenticated userId
+ */
+function extractSessionUser(req) {
+  const authHeader = req.headers['authorization'] || req.headers['x-session-token'];
+  if (!authHeader || typeof authHeader !== 'string') {
+    return { authenticated: false, error: 'Authentication required. No session authorization token provided.' };
+  }
+
+  let token = authHeader.trim();
+  if (token.startsWith('Bearer ')) {
+    token = token.slice(7).trim();
+  }
+
+  if (!token.startsWith('delta_sess_')) {
+    return { authenticated: false, error: 'Invalid session token format.' };
+  }
+
+  try {
+    const b64 = token.slice('delta_sess_'.length);
+    const decoded = Buffer.from(b64, 'base64').toString('utf-8');
+    const session = JSON.parse(decoded);
+
+    if (!session || typeof session !== 'object' || Array.isArray(session)) {
+      return { authenticated: false, error: 'Malformed session token payload.' };
+    }
+
+    const userId = session.uid || session.userId;
+    if (!userId || typeof userId !== 'string') {
+      return { authenticated: false, error: 'Session token does not contain a valid user identifier.' };
+    }
+
+    const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeUserId || safeUserId === 'default' || safeUserId.length < 3) {
+      return { authenticated: false, error: 'Invalid or restricted user identifier.' };
+    }
+
+    if (session.exp && typeof session.exp === 'number' && Date.now() > session.exp) {
+      return { authenticated: false, error: 'Session token has expired. Please re-authenticate.' };
+    }
+
+    return { authenticated: true, userId: safeUserId };
+  } catch (err) {
+    return { authenticated: false, error: 'Failed to verify session token.' };
+  }
+}
+
+export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
+  }
+
+  // 1. Authenticate request & derive userId from session token (never from query/body)
+  const auth = extractSessionUser(req);
+  if (!auth.authenticated) {
+    return res.status(401).json({ error: auth.error });
+  }
+
+  const userId = auth.userId;
+
+  // 2. Validate request payload size
+  const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+  if (contentLength > MAX_PAYLOAD_BYTES) {
+    return res.status(413).json({ error: 'Payload too large. Maximum sync payload size is 10MB.' });
   }
 
   const sql = getDatabase();
@@ -21,8 +82,7 @@ export default async function handler(req, res) {
   try {
     await ensureTables(sql);
 
-    const userId = (req.query.userId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
-
+    // GET /api/sync - fetch authenticated user's records
     if (req.method === 'GET') {
       const rows = await sql`
         SELECT trades, diary, capital_logs, settings, updated_at
@@ -51,15 +111,56 @@ export default async function handler(req, res) {
       });
     }
 
+    // POST /api/sync - push authenticated user's records
     if (req.method === 'POST') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      let body;
+      try {
+        body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      } catch (err) {
+        return res.status(400).json({ error: 'Malformed JSON payload.' });
+      }
+
+      // Validate payload shape
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ error: 'Invalid payload shape: root must be a JSON object.' });
+      }
+
+      if (body.trades !== undefined && !Array.isArray(body.trades)) {
+        return res.status(400).json({ error: 'Invalid payload shape: trades must be an array.' });
+      }
+      if (Array.isArray(body.trades) && body.trades.length > MAX_TRADES) {
+        return res.status(400).json({ error: `Trades array exceeds maximum limit of ${MAX_TRADES} items.` });
+      }
+
+      if (body.diary !== undefined && !Array.isArray(body.diary)) {
+        return res.status(400).json({ error: 'Invalid payload shape: diary must be an array.' });
+      }
+      if (Array.isArray(body.diary) && body.diary.length > MAX_DIARY_ENTRIES) {
+        return res.status(400).json({ error: `Diary array exceeds maximum limit of ${MAX_DIARY_ENTRIES} items.` });
+      }
+
+      if (body.capitalLogs !== undefined && !Array.isArray(body.capitalLogs)) {
+        return res.status(400).json({ error: 'Invalid payload shape: capitalLogs must be an array.' });
+      }
+      if (Array.isArray(body.capitalLogs) && body.capitalLogs.length > MAX_CAPITAL_LOGS) {
+        return res.status(400).json({ error: `Capital logs array exceeds maximum limit of ${MAX_CAPITAL_LOGS} items.` });
+      }
+
+      if (body.settings !== undefined && body.settings !== null && (typeof body.settings !== 'object' || Array.isArray(body.settings))) {
+        return res.status(400).json({ error: 'Invalid payload shape: settings must be an object or null.' });
+      }
+
+      if (body.updatedAt !== undefined && (typeof body.updatedAt !== 'number' || isNaN(body.updatedAt))) {
+        return res.status(400).json({ error: 'Invalid payload shape: updatedAt must be a numeric timestamp.' });
+      }
+
       const deletedIds = Array.isArray(body.deletedTradeIds) ? body.deletedTradeIds : [];
       const deletedSet = new Set(deletedIds);
       const rawTrades = Array.isArray(body.trades) ? body.trades : [];
       let cleanTrades = rawTrades.filter((t) => t && t.id && !deletedSet.has(t.id));
 
       // CRITICAL SERVER-SIDE DEFENSE:
-      // If client is reporting trade deletions (deletedTradeIds has items), but rawTrades is empty,
+      // If client is reporting trade deletions, but rawTrades is empty,
       // and this is NOT an explicit full reset (isFullReset !== true):
       // NEVER wipe out all trades! Instead, load the existing trades from the DB and remove ONLY the deleted IDs!
       if (deletedIds.length > 0 && cleanTrades.length === 0 && !body.isFullReset) {

@@ -36,13 +36,38 @@ export function getUsers() {
 }
 
 /**
+ * Generate a structured session token containing user identity and expiration
+ */
+export function generateSessionToken(user) {
+  if (!user || !user.id) return '';
+  const payload = {
+    uid: user.id,
+    u: user.username || user.email || '',
+    iat: Date.now(),
+    exp: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
+  };
+  const json = JSON.stringify(payload);
+  const b64 = typeof btoa !== 'undefined'
+    ? btoa(unescape(encodeURIComponent(json)))
+    : Buffer.from(json).toString('base64');
+  return `delta_sess_${b64}`;
+}
+
+/**
  * Get active session
  */
 export function getActiveSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const session = JSON.parse(raw);
+    if (!session || !session.id) return null;
+    // Upgrade legacy session tokens to structured delta_sess_ format if necessary
+    if (!session.token || !session.token.startsWith('delta_sess_')) {
+      session.token = generateSessionToken(session);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+    return session;
   } catch (e) {
     return null;
   }
@@ -85,7 +110,7 @@ export function login(identifier, password) {
     username: user.username,
     email: user.email,
     name: user.name,
-    token: `delta_sec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    token: generateSessionToken(user),
     loginTime: new Date().toISOString(),
   };
 
@@ -148,7 +173,7 @@ export function register({ username, email, name, password }) {
     username: newUser.username,
     email: newUser.email,
     name: newUser.name,
-    token: `delta_sec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    token: generateSessionToken(newUser),
     loginTime: new Date().toISOString(),
   };
 

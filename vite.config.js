@@ -13,13 +13,52 @@ function localSyncPlugin() {
   return {
     name: 'local-sync-plugin',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        // Handle CORS for local network and cross-device access
-        if (req.url && req.url.startsWith('/api/sync')) {
-          res.setHeader('Access-Control-Allow-Origin', '*')
-          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+      function extractSessionUser(req) {
+        const authHeader = req.headers['authorization'] || req.headers['x-session-token']
+        if (!authHeader || typeof authHeader !== 'string') {
+          return { authenticated: false, error: 'Authentication required. No session token provided.' }
+        }
 
+        let token = authHeader.trim()
+        if (token.startsWith('Bearer ')) {
+          token = token.slice(7).trim()
+        }
+
+        if (!token.startsWith('delta_sess_')) {
+          return { authenticated: false, error: 'Invalid session token format.' }
+        }
+
+        try {
+          const b64 = token.slice('delta_sess_'.length)
+          const decoded = Buffer.from(b64, 'base64').toString('utf-8')
+          const session = JSON.parse(decoded)
+
+          if (!session || typeof session !== 'object' || Array.isArray(session)) {
+            return { authenticated: false, error: 'Malformed session token payload.' }
+          }
+
+          const userId = session.uid || session.userId
+          if (!userId || typeof userId !== 'string') {
+            return { authenticated: false, error: 'Session token does not contain a valid user identifier.' }
+          }
+
+          const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '')
+          if (!safeUserId || safeUserId === 'default' || safeUserId.length < 3) {
+            return { authenticated: false, error: 'Invalid or restricted user identifier.' }
+          }
+
+          if (session.exp && typeof session.exp === 'number' && Date.now() > session.exp) {
+            return { authenticated: false, error: 'Session token has expired. Please re-authenticate.' }
+          }
+
+          return { authenticated: true, userId: safeUserId }
+        } catch (err) {
+          return { authenticated: false, error: 'Failed to verify session token.' }
+        }
+      }
+
+      server.middlewares.use((req, res, next) => {
+        if (req.url && req.url.startsWith('/api/sync')) {
           if (req.method === 'OPTIONS') {
             res.statusCode = 204
             res.end()
@@ -38,10 +77,27 @@ function localSyncPlugin() {
           }
 
           // User Data Sync (Trades, Diary, Capital, Risk Settings)
-          const url = new URL(req.url, 'http://localhost')
-          const userId = url.searchParams.get('userId') || 'default'
+          // 1. Authenticate request & derive userId from session token
+          const auth = extractSessionUser(req)
+          if (!auth.authenticated) {
+            res.statusCode = 401
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: auth.error }))
+            return
+          }
+
+          const userId = auth.userId
           const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '_')
           const userFile = path.join(dataDir, `user_${safeUserId}.json`)
+
+          // 2. Validate payload size
+          const contentLength = parseInt(req.headers['content-length'] || '0', 10)
+          if (contentLength > 10 * 1024 * 1024) {
+            res.statusCode = 413
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Payload too large. Maximum size is 10MB.' }))
+            return
+          }
 
           if (req.method === 'GET') {
             res.setHeader('Content-Type', 'application/json')
@@ -62,6 +118,66 @@ function localSyncPlugin() {
             req.on('end', () => {
               try {
                 const parsed = JSON.parse(body)
+                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: root must be a JSON object.' }))
+                  return
+                }
+
+                if (parsed.trades !== undefined && !Array.isArray(parsed.trades)) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: trades must be an array.' }))
+                  return
+                }
+                if (Array.isArray(parsed.trades) && parsed.trades.length > 50000) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Trades array exceeds maximum limit of 50,000 items.' }))
+                  return
+                }
+
+                if (parsed.diary !== undefined && !Array.isArray(parsed.diary)) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: diary must be an array.' }))
+                  return
+                }
+                if (Array.isArray(parsed.diary) && parsed.diary.length > 10000) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Diary array exceeds maximum limit of 10,000 items.' }))
+                  return
+                }
+
+                if (parsed.capitalLogs !== undefined && !Array.isArray(parsed.capitalLogs)) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: capitalLogs must be an array.' }))
+                  return
+                }
+                if (Array.isArray(parsed.capitalLogs) && parsed.capitalLogs.length > 5000) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Capital logs array exceeds maximum limit of 5,000 items.' }))
+                  return
+                }
+
+                if (parsed.settings !== undefined && parsed.settings !== null && (typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: settings must be an object or null.' }))
+                  return
+                }
+
+                if (parsed.updatedAt !== undefined && (typeof parsed.updatedAt !== 'number' || isNaN(parsed.updatedAt))) {
+                  res.statusCode = 400
+                  res.setHeader('Content-Type', 'application/json')
+                  res.end(JSON.stringify({ error: 'Invalid payload shape: updatedAt must be a numeric timestamp.' }))
+                  return
+                }
+
                 parsed.updatedAt = parsed.updatedAt || Date.now()
 
                 // Safety guard for trade deletion
@@ -81,6 +197,7 @@ function localSyncPlugin() {
                 res.end(JSON.stringify({ success: true, updatedAt: parsed.updatedAt }))
               } catch (err) {
                 res.statusCode = 400
+                res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ error: err.message }))
               }
             })
@@ -90,10 +207,6 @@ function localSyncPlugin() {
 
         // Local AI Contract Note Parse Endpoint
         if (req.url && req.url.startsWith('/api/ai/parse-contract-note')) {
-          res.setHeader('Access-Control-Allow-Origin', '*')
-          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-
           if (req.method === 'OPTIONS') {
             res.statusCode = 204
             res.end()
