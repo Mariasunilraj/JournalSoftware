@@ -6,7 +6,21 @@ import App from './App.jsx'
 // Register Service Worker for PWA App installation on phones and laptops
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      // Force instant update check on page load
+      registration.update();
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Automatically reload to display the new version
+              window.location.reload();
+            }
+          });
+        }
+      });
+    }).catch((err) => {
       console.warn('PWA service worker registration notice:', err);
     });
   });

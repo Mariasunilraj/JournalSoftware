@@ -3,8 +3,8 @@ import {
   Home,
   LayoutGrid,
   CalendarDays,
-  CloudUpload,
-  FileText,
+  Sparkles,
+  Database,
 } from 'lucide-react';
 
 export default function BottomNav({ activeTab, setActiveTab }) {
@@ -27,12 +27,12 @@ export default function BottomNav({ activeTab, setActiveTab }) {
     {
       id: 'diary',
       label: 'Diary',
-      icon: CloudUpload,
+      icon: Sparkles,
     },
     {
       id: 'data',
       label: 'Backup',
-      icon: FileText,
+      icon: Database,
     },
   ];
 
