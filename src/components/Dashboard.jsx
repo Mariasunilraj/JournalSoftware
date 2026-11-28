@@ -3,7 +3,6 @@ import {
   LayoutGrid,
   Trophy,
   TrendingUp,
-  TrendingDown,
   Target,
   CalendarDays,
   BarChart3,
@@ -20,13 +19,6 @@ import { formatINR, formatIndianDate } from '../utils/calculations';
 function CandlestickWatermark({ className = "w-36 sm:w-44 h-22 opacity-40" }) {
   return (
     <svg viewBox="0 0 180 85" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="cwGlow" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#00e676" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#00ff66" stopOpacity="0.85" />
-        </linearGradient>
-      </defs>
-
       {/* Candle 1 */}
       <line x1="16" y1="48" x2="16" y2="72" stroke="#00e676" strokeWidth="1.2" opacity="0.3" />
       <rect x="13" y="52" width="6" height="12" rx="1" fill="#00e676" opacity="0.35" />
@@ -57,7 +49,7 @@ function CandlestickWatermark({ className = "w-36 sm:w-44 h-22 opacity-40" }) {
 
       {/* Candle 8 (Tall Breakout) */}
       <line x1="156" y1="4" x2="156" y2="34" stroke="#00ff66" strokeWidth="1.5" />
-      <rect x="153" y="8" width="6" height="22" rx="1" fill="#00ff66" filter="drop-shadow(0 0 6px rgba(0,255,102,0.6))" />
+      <rect x="153" y="8" width="6" height="22" rx="1" fill="#00ff66" />
     </svg>
   );
 }
@@ -71,9 +63,6 @@ function SparklineWave({ className = "w-full h-12" }) {
           <stop offset="0%" stopColor="#00e676" stopOpacity="0.4" />
           <stop offset="100%" stopColor="#00e676" stopOpacity="0.0" />
         </linearGradient>
-        <filter id="endpointGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#00ff66" floodOpacity="0.9" />
-        </filter>
       </defs>
 
       {/* Area Fill */}
@@ -91,7 +80,7 @@ function SparklineWave({ className = "w-full h-12" }) {
       />
 
       {/* Glowing Neon Endpoint */}
-      <circle cx="156" cy="16" r="3.5" fill="#00ff66" filter="url(#endpointGlow)" />
+      <circle cx="156" cy="16" r="3.5" fill="#00ff66" />
       <circle cx="156" cy="16" r="1.5" fill="#ffffff" />
     </svg>
   );
@@ -148,7 +137,6 @@ function OutcomeDonut({ winRate = 68 }) {
 
 // 4. Monthly Profit Mini Bar Chart SVG with Floating Highlight Pill
 function MiniMonthlyBars({ activePnlText = "₹32.7K" }) {
-  // Height profiles for 8 ascending/varied bars
   const bars = [16, 24, 20, 28, 22, 34, 26, 42];
 
   return (
@@ -172,7 +160,6 @@ function MiniMonthlyBars({ activePnlText = "₹32.7K" }) {
               height={h}
               rx="2.5"
               fill={isLast ? '#00e676' : '#08381c'}
-              filter={isLast ? 'drop-shadow(0 0 6px rgba(0,230,118,0.7))' : undefined}
             />
           );
         })}
@@ -182,7 +169,7 @@ function MiniMonthlyBars({ activePnlText = "₹32.7K" }) {
 }
 
 export default function Dashboard({
-  analytics,
+  analytics = {},
   trades = [],
   settings = {},
   onOpenTradeModal,
@@ -192,16 +179,15 @@ export default function Dashboard({
   const [selectedTimeRange, setSelectedTimeRange] = useState('Last 30 Days');
   const [isRangeOpen, setIsRangeOpen] = useState(false);
 
-  const hasTrades = trades && trades.length > 0;
+  const safeTrades = Array.isArray(trades) ? trades : [];
+  const hasTrades = safeTrades.length > 0;
 
   const {
     netPnL = 0,
     winRate = 0,
     totalTrades = 0,
-    winningTrades = 0,
-    losingTrades = 0,
     monthlyPnLMap = {},
-    weekdayStats = [],
+    weekdayStats = {},
   } = analytics || {};
 
   const initialCap = Number(settings?.initialCapital) || 0;
@@ -210,19 +196,18 @@ export default function Dashboard({
   // 1. Largest Winning Trade Spotlight
   const largestWinTrade = useMemo(() => {
     if (!hasTrades) return null;
-    const wins = trades.filter((t) => Number(t.netPnL) > 0);
+    const wins = safeTrades.filter((t) => t && Number(t.netPnL) > 0);
     if (!wins.length) return null;
     return [...wins].sort((a, b) => Number(b.netPnL) - Number(a.netPnL))[0];
-  }, [hasTrades, trades]);
+  }, [hasTrades, safeTrades]);
 
-  // Fallbacks matching mockup when no user trades exist
   const displayLargeWinAmount = hasTrades
     ? largestWinTrade ? Number(largestWinTrade.netPnL) : 0
     : 12450.75;
 
   const displayLargeWinText = hasTrades
     ? largestWinTrade
-      ? `On ${formatIndianDate(largestWinTrade.date)} • ${largestWinTrade.symbol}`
+      ? `On ${formatIndianDate(largestWinTrade.date)} • ${largestWinTrade.symbol || 'NIFTY'}`
       : 'No winning trades yet'
     : 'On 24 Nov 2026 • NIFTY 25750 PE';
 
@@ -239,9 +224,18 @@ export default function Dashboard({
 
   // 4. Weekday Edge Data
   const weekdaysList = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayNameMapping = {
+    Mon: 'Monday',
+    Tue: 'Tuesday',
+    Wed: 'Wednesday',
+    Thu: 'Thursday',
+    Fri: 'Friday',
+    Sat: 'Saturday',
+    Sun: 'Sunday',
+  };
+
   const weekdayMap = useMemo(() => {
     if (!hasTrades) {
-      // Mockup defaults
       return {
         Mon: { rate: 72, count: 5, isTop: true },
         Tue: { rate: 56, count: 4 },
@@ -252,24 +246,38 @@ export default function Dashboard({
         Sun: { rate: null, count: 0 },
       };
     }
+
     const map = {};
-    (weekdayStats || []).forEach((item) => {
-      const short = item.day ? item.day.slice(0, 3) : '';
-      const dayTrades = trades.filter((t) => {
-        if (!t.date) return false;
-        const dName = new Date(t.date).toLocaleDateString('en-US', { weekday: 'short' });
-        return dName === short;
+    weekdaysList.forEach((short) => {
+      const fullDay = dayNameMapping[short];
+      const dayTrades = safeTrades.filter((t) => {
+        if (!t?.date) return false;
+        try {
+          let dateStr = String(t.date).trim();
+          if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
+            const parts = dateStr.split(/[-/]/);
+            dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          }
+          const d = new Date(dateStr);
+          if (isNaN(d.getTime())) return false;
+          return d.toLocaleDateString('en-US', { weekday: 'short' }) === short;
+        } catch (e) {
+          return false;
+        }
       });
-      const winsCount = dayTrades.filter((t) => Number(t.netPnL) > 0).length;
+
+      const winsCount = dayTrades.filter((t) => Number(t?.netPnL) > 0).length;
       const rate = dayTrades.length > 0 ? Math.round((winsCount / dayTrades.length) * 100) : null;
       map[short] = {
         rate,
         count: dayTrades.length,
-        pnl: item.pnl,
+        pnl: (weekdayStats && typeof weekdayStats === 'object' && !Array.isArray(weekdayStats))
+          ? (weekdayStats[fullDay] || 0)
+          : 0,
       };
     });
     return map;
-  }, [hasTrades, weekdayStats, trades]);
+  }, [hasTrades, safeTrades, weekdayStats]);
 
   // Find day with highest win rate
   const bestDay = useMemo(() => {
@@ -287,18 +295,23 @@ export default function Dashboard({
   }, [hasTrades, weekdayMap]);
 
   // 5. Monthly Net Profit
-  const monthKeys = Object.keys(monthlyPnLMap || {}).sort();
+  const safeMonthlyMap = monthlyPnLMap && typeof monthlyPnLMap === 'object' ? monthlyPnLMap : {};
+  const monthKeys = Object.keys(safeMonthlyMap).sort();
   const currentMonthKey = new Date().toISOString().slice(0, 7);
   const currentMonthPnL = hasTrades
-    ? monthlyPnLMap[currentMonthKey]?.netPnL ?? (monthKeys.length > 0 ? monthlyPnLMap[monthKeys[monthKeys.length - 1]]?.netPnL ?? 0 : 0)
+    ? safeMonthlyMap[currentMonthKey]?.netPnL ?? (monthKeys.length > 0 ? safeMonthlyMap[monthKeys[monthKeys.length - 1]]?.netPnL ?? 0 : 0)
     : 32760.25;
 
   const displayMonthlyPnlText = hasTrades ? formatINR(currentMonthPnL) : '₹32,760.25';
-  const displayMonthlyBadge = hasTrades
-    ? currentMonthPnL >= 1000 || currentMonthPnL <= -1000
-      ? `₹${(currentMonthPnL / 1000).toFixed(1)}K`
-      : formatINR(currentMonthPnL)
-    : '₹32.7K';
+  const displayMonthlyBadge = useMemo(() => {
+    if (!hasTrades) return '₹32.7K';
+    const abs = Math.abs(currentMonthPnL);
+    const sign = currentMonthPnL < 0 ? '-' : '';
+    if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(1)}Cr`;
+    if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(1)}L`;
+    if (abs >= 1000) return `${sign}₹${(abs / 1000).toFixed(1)}K`;
+    return formatINR(currentMonthPnL);
+  }, [hasTrades, currentMonthPnL]);
 
   // 6. Recent 3 executed trades
   const recentTrades = useMemo(() => {
@@ -333,26 +346,34 @@ export default function Dashboard({
         },
       ];
     }
-    return [...trades]
-      .filter((t) => t.status !== 'Open')
-      .sort((a, b) => new Date(`${b.date}T${b.entryTime || '09:15'}`) - new Date(`${a.date}T${a.entryTime || '09:15'}`))
+    return [...safeTrades]
+      .filter((t) => t && t.status !== 'Open')
+      .sort((a, b) => {
+        try {
+          const dateA = a.date || '2000-01-01';
+          const dateB = b.date || '2000-01-01';
+          return new Date(`${dateB}T${b.entryTime || '09:15'}`) - new Date(`${dateA}T${a.entryTime || '09:15'}`);
+        } catch (e) {
+          return 0;
+        }
+      })
       .slice(0, 3)
       .map((t) => {
-        const pnl = Number(t.netPnL) || 0;
+        const pnl = Number(t?.netPnL) || 0;
         let tType = 'CALL';
-        if (t.optionType === 'PE' || t.symbol?.includes('PE')) tType = 'PUT';
+        if (t?.optionType === 'PE' || t?.symbol?.includes('PE')) tType = 'PUT';
         return {
-          id: t.id,
-          symbol: t.symbol,
+          id: t?.id || Math.random().toString(),
+          symbol: t?.symbol || 'Options Contract',
           type: tType,
-          date: formatIndianDate(t.date),
-          time: t.entryTime || '09:30',
+          date: formatIndianDate(t?.date),
+          time: t?.entryTime || '09:30',
           netPnL: pnl,
           isProfit: pnl >= 0,
           raw: t,
         };
       });
-  }, [hasTrades, trades]);
+  }, [hasTrades, safeTrades]);
 
   return (
     <div className="space-y-3.5 pb-28 max-w-4xl mx-auto w-full min-w-0 px-0.5">

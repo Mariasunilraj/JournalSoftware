@@ -15,6 +15,7 @@ import AuthView from './components/AuthView';
 import InstallAppModal from './components/InstallAppModal';
 import ConfirmDeleteModal from './components/ConfirmDeleteModal';
 import ContractNoteModal from './components/ContractNoteModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import {
@@ -561,60 +562,62 @@ export default function App() {
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-2 sm:px-6 lg:px-8 py-3 sm:py-6 pb-24 lg:pb-8 min-w-0">
-          {activeTab === 'trades' && (
-            <TradeLog
-              trades={trades}
-              onOpenTradeModal={handleOpenEditTrade}
-              onViewTrade={handleOpenViewTrade}
-              onDeleteTrade={handleRequestDeleteTrade}
-              onDeleteMultipleTrades={handleDeleteMultipleTrades}
-              onDuplicateTrade={handleDuplicateTrade}
-              onSaveTrade={handleSaveTrade}
-              onOpenContractNoteModal={() => setIsContractNoteModalOpen(true)}
-            />
-          )}
+          <ErrorBoundary>
+            {activeTab === 'trades' && (
+              <TradeLog
+                trades={trades}
+                onOpenTradeModal={handleOpenEditTrade}
+                onViewTrade={handleOpenViewTrade}
+                onDeleteTrade={handleRequestDeleteTrade}
+                onDeleteMultipleTrades={handleDeleteMultipleTrades}
+                onDuplicateTrade={handleDuplicateTrade}
+                onSaveTrade={handleSaveTrade}
+                onOpenContractNoteModal={() => setIsContractNoteModalOpen(true)}
+              />
+            )}
 
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              analytics={analytics}
-              trades={trades}
-              settings={settings}
-              onOpenTradeModal={handleOpenEditTrade}
-              onViewTrade={handleOpenViewTrade}
-              onNavigateTab={setActiveTab}
-            />
-          )}
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                analytics={analytics}
+                trades={trades}
+                settings={settings}
+                onOpenTradeModal={handleOpenEditTrade}
+                onViewTrade={handleOpenViewTrade}
+                onNavigateTab={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'calendar' && (
-            <CalendarView
-              trades={trades}
-              onViewTrade={handleOpenViewTrade}
-              onOpenTradeModal={handleOpenEditTrade}
-              settings={settings}
-            />
-          )}
+            {activeTab === 'calendar' && (
+              <CalendarView
+                trades={trades}
+                onViewTrade={handleOpenViewTrade}
+                onOpenTradeModal={handleOpenEditTrade}
+                settings={settings}
+              />
+            )}
 
-          {activeTab === 'diary' && (
-            <DiaryView
-              diary={diary}
-              onSaveDiary={handleSaveDiary}
-              onDeleteDiary={handleDeleteDiary}
-              trades={trades}
-            />
-          )}
+            {activeTab === 'diary' && (
+              <DiaryView
+                diary={diary}
+                onSaveDiary={handleSaveDiary}
+                onDeleteDiary={handleDeleteDiary}
+                trades={trades}
+              />
+            )}
 
-          {activeTab === 'data' && (
-            <DataManagementView
-              trades={trades}
-              diary={diary}
-              capitalLogs={capitalLogs}
-              settings={settings}
-              onUpdateAllData={handleUpdateAllData}
-              onAddCapitalLog={handleAddCapitalLog}
-              onOpenPrintReport={() => setIsPrintReportOpen(true)}
-              analytics={analytics}
-            />
-          )}
+            {activeTab === 'data' && (
+              <DataManagementView
+                trades={trades}
+                diary={diary}
+                capitalLogs={capitalLogs}
+                settings={settings}
+                onUpdateAllData={handleUpdateAllData}
+                onAddCapitalLog={handleAddCapitalLog}
+                onOpenPrintReport={() => setIsPrintReportOpen(true)}
+                analytics={analytics}
+              />
+            )}
+          </ErrorBoundary>
         </main>
 
         {/* Footer */}
